@@ -1,10 +1,14 @@
 import OpenAI from "openai";
 import { Message } from "@shared/schema";
+import { generateLocalFashionResponse } from "./fashionData";
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY || "" 
 });
+
+// Flag to track if we've encountered an API rate limit or quota issue
+let useLocalDataFallback = false;
 
 // Helper function to prepare the chat history for OpenAI
 function prepareConversationHistory(history: Message[]) {
@@ -67,6 +71,28 @@ export async function generateFashionResponse(
   history: Message[] = [], 
   imageData?: string
 ) {
+  // If we've encountered quota issues before, use local data immediately
+  if (useLocalDataFallback) {
+    const localResponse = generateLocalFashionResponse(userMessage);
+    
+    // Format the response for the front-end
+    let formattedResponse = localResponse.message;
+    
+    // Add JSON data for the frontend to parse
+    if (localResponse.colors || localResponse.outfits || localResponse.accessories) {
+      formattedResponse += '\n\n```json\n' + JSON.stringify({
+        colors: localResponse.colors || [],
+        outfits: localResponse.outfits || [],
+        accessories: localResponse.accessories || []
+      }, null, 2) + '\n```';
+    }
+    
+    return {
+      message: formattedResponse,
+      responseType: 'text'
+    };
+  }
+  
   try {
     // Convert history to OpenAI format
     const conversationHistory = prepareConversationHistory(history);
@@ -117,12 +143,40 @@ export async function generateFashionResponse(
 
     return {
       message: assistantMessage,
-      // The frontend will parse the JSON embedded in the message
+      responseType: 'text'
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating fashion response:", error);
+    
+    // Check if it's a quota/rate-limit error
+    if (error?.status === 429 || (error?.error?.type === 'insufficient_quota')) {
+      console.log("OpenAI API quota exceeded, switching to local data mode");
+      useLocalDataFallback = true;
+      
+      // Use local data as fallback
+      const localResponse = generateLocalFashionResponse(userMessage);
+      
+      // Format the response for the front-end
+      let formattedResponse = localResponse.message;
+      
+      // Add JSON data for the frontend to parse
+      if (localResponse.colors || localResponse.outfits || localResponse.accessories) {
+        formattedResponse += '\n\n```json\n' + JSON.stringify({
+          colors: localResponse.colors || [],
+          outfits: localResponse.outfits || [],
+          accessories: localResponse.accessories || []
+        }, null, 2) + '\n```';
+      }
+      
+      return {
+        message: formattedResponse,
+        responseType: 'text'
+      };
+    }
+    
     return {
-      message: "I'm having trouble connecting to my fashion database. Could you try asking again in a moment?",
+      message: "I'm having trouble connecting to my fashion database. I'll use local data to help you instead.",
+      responseType: 'text'
     };
   }
 }
