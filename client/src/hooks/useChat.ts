@@ -1,12 +1,13 @@
 import { useState, useCallback, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { Message, ChatResponse } from '@/lib/types';
+import { Message, ChatResponse, ChatHistoryItem } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { useToast } from '@/hooks/use-toast';
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [chatHistoryId, setChatHistoryId] = useState<number | null>(null);
   const { toast } = useToast();
 
   // Load initial welcome message
@@ -29,6 +30,71 @@ export function useChat() {
       reader.onerror = error => reject(error);
     });
   };
+  
+  // Save chat history to database
+  const saveChatHistory = async (messagesToSave: Message[]) => {
+    try {
+      // Skip saving if only welcome message exists
+      if (messagesToSave.length <= 1) return;
+      
+      if (chatHistoryId) {
+        // Update existing chat history
+        const response = await apiRequest('PUT', `/api/chat/history/${chatHistoryId}`, {
+          messages: messagesToSave
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to update chat history');
+        }
+      } else {
+        // Create new chat history
+        const response = await apiRequest('POST', '/api/chat/history', {
+          messages: messagesToSave,
+          // In a real app with auth, we would include the user ID here
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setChatHistoryId(data.chatHistoryId);
+        } else {
+          console.error('Failed to create chat history');
+        }
+      }
+    } catch (error) {
+      console.error('Error saving chat history:', error);
+    }
+  };
+  
+  // Load chat history from database
+  const loadChatHistory = useCallback(async (historyId: number) => {
+    try {
+      setIsLoading(true);
+      
+      const response = await apiRequest('GET', `/api/chat/history/${historyId}`);
+      
+      if (response.ok) {
+        const chatHistory = await response.json();
+        setMessages(chatHistory.messages);
+        setChatHistoryId(chatHistory.id);
+      } else {
+        console.error('Failed to load chat history');
+        toast({
+          title: "Error",
+          description: "Failed to load chat history.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load chat history.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
   const sendMessage = useCallback(async (content: string, imageFile?: File) => {
     try {
@@ -80,7 +146,11 @@ export function useChat() {
         displayContent: undefined // This will be rendered based on responseType
       };
 
-      setMessages(prev => [...prev, aiMessage]);
+      const updatedMessages = [...messages, aiMessage];
+      setMessages(updatedMessages);
+      
+      // Save chat history to database
+      await saveChatHistory(updatedMessages);
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -91,10 +161,11 @@ export function useChat() {
     } finally {
       setIsLoading(false);
     }
-  }, [messages, toast]);
+  }, [messages, toast, chatHistoryId]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
+    setChatHistoryId(null);
     
     // Add welcome message back
     const welcomeMessage: Message = {
@@ -110,6 +181,8 @@ export function useChat() {
     messages,
     sendMessage,
     isLoading,
-    clearChat
+    clearChat,
+    loadChatHistory,
+    chatHistoryId
   };
 }
