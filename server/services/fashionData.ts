@@ -246,6 +246,16 @@ export function generateLocalFashionResponse(query: string): TrendResponse {
     }
   }
   
+  // Define fashion-related terms for better query categorization
+  const fashionTerms = [
+    'style', 'fashion', 'clothes', 'clothing', 'wardrobe', 'dress', 'shirt', 'pants', 'shoes', 
+    'wear', 'look', 'outfit', 'attire', 'garment', 'apparel', 'ensemble', 'trend', 'color',
+    'pattern', 'fabric', 'design', 'accessory', 'accessories', 'jewelry', 'bag', 'handbag',
+    'purse', 'hat', 'scarf', 'boot', 'sandal', 'sneaker', 'jacket', 'coat', 'suit', 'tie',
+    'casual', 'formal', 'business', 'professional', 'party', 'evening', 'season', 'spring',
+    'summer', 'fall', 'winter', 'model', 'designer', 'brand', 'fit', 'size'
+  ];
+  
   // Check for out-of-scope questions
   const nonFashionTopics = [
     'politics', 'religion', 'sports', 'recipe', 'cook', 'food', 'travel', 
@@ -254,7 +264,10 @@ export function generateLocalFashionResponse(query: string): TrendResponse {
     'disease', 'illness', 'medicine'
   ];
   
-  if (nonFashionTopics.some(topic => lowerQuery.includes(topic))) {
+  // First check if it contains any fashion-related terms before the non-fashion check
+  const containsFashionTerms = fashionTerms.some(term => lowerQuery.includes(term));
+  
+  if (!containsFashionTerms && nonFashionTopics.some(topic => lowerQuery.includes(topic))) {
     return { 
       message: "I'm a fashion assistant and can't provide advice on this topic. I'd be happy to help with style tips, outfit recommendations, or fashion trends instead!" 
     };
@@ -304,11 +317,25 @@ export function generateLocalFashionResponse(query: string): TrendResponse {
   
   // If no specific query type identified, try to give general fashion advice
   if (!isColorQuery && !isOutfitQuery && !isAccessoryQuery) {
-    // Check if it's a fashion-related query despite not having any specific keywords
-    const fashionTerms = ['style', 'fashion', 'clothes', 'clothing', 'wardrobe', 'dress', 'shirt', 'pants', 'shoes'];
-    const isFashionRelated = fashionTerms.some(term => lowerQuery.includes(term));
+    // For "trend" related queries without specific color mentions
+    if (lowerQuery.includes('trend') || lowerQuery.includes('popular') || lowerQuery.includes('recommendation')) {
+      response.colors = getSeasonalColors(season);
+      response.outfits = getOutfitRecommendations(outfitType);
+      response.accessories = getAccessoryRecommendations().slice(0, 3);
+      
+      response.message = `Here are the trending fashion items for ${season}: 
+      - Colors: ${response.colors.map((c: FashionColor) => c.name).join(', ')}
+      - Outfits: ${response.outfits.map((o: FashionOutfit) => o.name).join(', ')}
+      - Accessories: ${response.accessories.map((a: FashionAccessory) => a.name).join(', ')}`;
+      
+      return response;
+    }
     
-    if (isFashionRelated) {
+    // Check if it contains any fashion-related terms (using the array defined earlier)
+    const isFashionRelated = containsFashionTerms;
+    
+    // Always provide some fashion advice for queries that seem remotely fashion-related
+    if (isFashionRelated || lowerQuery.length > 5) {
       response.colors = getSeasonalColors(season);
       response.outfits = getOutfitRecommendations(outfitType);
       response.accessories = getAccessoryRecommendations().slice(0, 2);
