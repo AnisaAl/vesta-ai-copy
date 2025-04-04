@@ -109,7 +109,7 @@ export function useChat() {
         userMessageDisplay = content.trim() ? content : "Here's an image for style advice";
       }
 
-      // Add user message
+      // Create user message
       const userMessage: Message = {
         id: nanoid(),
         content: userMessageDisplay,
@@ -117,8 +117,6 @@ export function useChat() {
         timestamp: new Date().toISOString(),
         imageData
       };
-
-      setMessages(prev => [...prev, userMessage]);
       setIsLoading(true);
 
       // Prepare request data
@@ -146,7 +144,8 @@ export function useChat() {
         displayContent: undefined // This will be rendered based on responseType
       };
 
-      const updatedMessages = [...messages, aiMessage];
+      // Include both the user message and AI message in the updated messages
+      const updatedMessages = [...messages, userMessage, aiMessage];
       setMessages(updatedMessages);
       
       // Save chat history to database
