@@ -20,26 +20,54 @@ export function useChat() {
     setMessages([welcomeMessage]);
   }, []);
 
-  const sendMessage = useCallback(async (content: string) => {
+  // Helper function to convert image file to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const sendMessage = useCallback(async (content: string, imageFile?: File) => {
     try {
-      if (!content.trim()) return;
+      if (!content.trim() && !imageFile) return;
+
+      let imageData: string | undefined = undefined;
+      let userMessageDisplay = content;
+
+      // Convert image to base64 if provided
+      if (imageFile) {
+        imageData = await fileToBase64(imageFile);
+        userMessageDisplay = content.trim() ? content : "Here's an image for style advice";
+      }
 
       // Add user message
       const userMessage: Message = {
         id: nanoid(),
-        content,
+        content: userMessageDisplay,
         role: 'user',
         timestamp: new Date().toISOString(),
+        imageData
       };
 
       setMessages(prev => [...prev, userMessage]);
       setIsLoading(true);
 
-      // Send to API
-      const response = await apiRequest('POST', '/api/chat', {
-        message: content,
+      // Prepare request data
+      const requestData: any = {
+        message: content || "Please analyze this image and provide styling advice",
         history: messages
-      });
+      };
+
+      // Add image data if present
+      if (imageData) {
+        requestData.imageData = imageData;
+      }
+
+      // Send to API
+      const response = await apiRequest('POST', '/api/chat', requestData);
 
       const data: ChatResponse = await response.json();
 

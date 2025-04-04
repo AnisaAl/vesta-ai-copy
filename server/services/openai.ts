@@ -37,6 +37,13 @@ For questions about fashion trends, colors, outfits, or accessories, please form
 }
 \`\`\`
 
+When analyzing fashion images that users upload:
+1. Identify key garments, colors, patterns, and styles present in the image
+2. Suggest complementary items or styling options based on what's in the image
+3. Recommend appropriate occasions or settings for the outfit or item
+4. Offer 2-3 alternative styling ideas using the same core pieces
+5. Include color recommendations that would pair well with the items in the image
+
 Important guidelines:
 1. For color recommendations, include the name and hex code of each color.
 2. For outfit recommendations, include real, accessible image URLs of fashion examples from Unsplash or similar free stock image services.
@@ -44,25 +51,64 @@ Important guidelines:
 4. Always include a brief textual explanation before the JSON block and a conclusion after it.
 5. Respond conversationally to small talk while maintaining your fashion expertise persona.
 6. Keep responses concise but informative.
+7. When responding to image uploads, provide tailored advice specific to what appears in the image.
 
 For non-fashion questions or small talk, respond in a friendly manner while gently steering the conversation back to fashion when appropriate.`;
 
-export async function generateFashionResponse(userMessage: string, history: Message[] = []) {
+/**
+ * Generate fashion response using OpenAI, optionally with image analysis
+ * @param userMessage User's text message
+ * @param history Previous conversation history
+ * @param imageData Optional base64 encoded image data
+ * @returns Response with assistant message
+ */
+export async function generateFashionResponse(
+  userMessage: string, 
+  history: Message[] = [], 
+  imageData?: string
+) {
   try {
     // Convert history to OpenAI format
     const conversationHistory = prepareConversationHistory(history);
     
     // Create the messages array
-    const messages = [
+    let messages: any[] = [
       { role: "system", content: SYSTEM_PROMPT },
-      ...conversationHistory,
-      { role: "user", content: userMessage }
+      ...conversationHistory
     ];
 
-    // Call OpenAI API
+    // If image is provided, add it to the messages with appropriate prompt
+    if (imageData) {
+      // Extract the base64 data from the data URL format if needed
+      const base64Data = imageData.includes('base64,') 
+        ? imageData 
+        : `data:image/jpeg;base64,${imageData}`;
+      
+      // Add the user message with image
+      messages.push({
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: userMessage || "Please analyze this fashion item and provide styling advice."
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: base64Data
+            }
+          }
+        ]
+      });
+    } else {
+      // Add text-only user message
+      messages.push({ role: "user", content: userMessage });
+    }
+
+    // Call OpenAI API with multimodal capability
     const response = await openai.chat.completions.create({
       model: "gpt-4o", // newest model
-      messages: messages as any,
+      messages: messages,
       temperature: 0.7,
       max_tokens: 1000,
     });

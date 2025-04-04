@@ -10,16 +10,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/chat', async (req, res) => {
     try {
       const requestSchema = z.object({
-        message: z.string().min(1),
-        history: z.array(messageSchema).optional()
+        message: z.string(),
+        history: z.array(messageSchema).optional(),
+        imageData: z.string().optional() // Base64 encoded image
       });
 
       const validatedData = requestSchema.parse(req.body);
       
-      // Process the message with OpenAI
+      // Process the message with OpenAI (with or without image)
       const response = await generateFashionResponse(
         validatedData.message, 
-        validatedData.history || []
+        validatedData.history || [],
+        validatedData.imageData
       );
       
       return res.json(response);

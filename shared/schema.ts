@@ -41,6 +41,7 @@ export const messageSchema = z.object({
   content: z.string(),
   role: z.enum(['user', 'assistant']),
   timestamp: z.string(),
+  imageData: z.string().optional(), // Base64 encoded image data
 });
 
 export type Message = z.infer<typeof messageSchema>;

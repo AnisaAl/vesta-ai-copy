@@ -61,7 +61,16 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
 
   if (message.role === 'user') {
     return (
-      <div className="max-w-[85%] chat-bubble user-bubble p-3">
+      <div className={`max-w-[85%] chat-bubble user-bubble p-3 ${message.imageData ? 'space-y-2' : ''}`}>
+        {message.imageData && (
+          <div className="mb-2">
+            <img 
+              src={message.imageData} 
+              alt="Uploaded fashion item" 
+              className="rounded-md max-h-44 w-auto object-contain"
+            />
+          </div>
+        )}
         <p className="text-sm">{message.content}</p>
       </div>
     );

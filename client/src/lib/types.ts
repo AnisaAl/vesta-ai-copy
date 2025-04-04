@@ -4,6 +4,7 @@ export interface Message {
   role: 'user' | 'assistant';
   timestamp: string;
   displayContent?: JSX.Element; // For rendering rich content
+  imageData?: string; // Base64 encoded image data
 }
 
 export interface ChatHistoryItem {
