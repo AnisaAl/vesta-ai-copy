@@ -172,11 +172,93 @@ export function getAccessoryRecommendations(): FashionAccessory[] {
   return ACCESSORIES.sort(() => 0.5 - Math.random()).slice(0, 3);
 }
 
+// Small talk responses
+const SMALL_TALK_RESPONSES: Record<string, string[]> = {
+  greeting: [
+    "Hello! I'm your fashion assistant. How can I help with your style today?",
+    "Hi there! Looking for fashion advice or trend updates?",
+    "Welcome! I'm here to help with all your fashion questions."
+  ],
+  thanks: [
+    "You're welcome! Let me know if you need more fashion advice.",
+    "Anytime! Fashion is my passion, and I'm happy to help.",
+    "My pleasure! Is there anything else about your style I can assist with?"
+  ],
+  goodbye: [
+    "Goodbye! Come back when you need more style inspiration!",
+    "Take care! Looking forward to our next fashion chat.",
+    "See you later! Stay stylish!"
+  ],
+  how_are_you: [
+    "I'm doing great! Always excited to talk about fashion. How can I help with your style today?",
+    "I'm wonderful, thanks for asking! Now, let's talk about your fashion needs.",
+    "I'm excellent and ready to discuss the latest trends or help with your outfit choices!"
+  ]
+};
+
+// Common fashion questions and answers
+const FASHION_FAQ: Record<string, string> = {
+  "how to determine my body type": "To determine your body type, measure your shoulders, bust/chest, waist, and hips. The proportions between these measurements will help identify whether you have an apple, pear, rectangle, hourglass, or inverted triangle shape. Each body type has specific styles that complement it best.",
+  
+  "how to build a capsule wardrobe": "A capsule wardrobe consists of essential, timeless pieces that mix and match well. Start with neutral basics: well-fitting jeans, simple t-shirts, a versatile blazer, a white button-down shirt, and a little black dress. Add seasonal pieces and accessories to expand your outfit options while keeping the collection minimal.",
+  
+  "how to dress for my age": "Instead of focusing on age-appropriate dressing, consider your personal style, body type, and comfort level. Quality fabrics, good fit, and proper proportions matter more than age. Express yourself through fashion while maintaining a balance that makes you feel confident.",
+  
+  "how to mix patterns": "To mix patterns successfully, vary the pattern scale (pair large with small), maintain a cohesive color palette, and consider adding a solid-colored piece to break up the patterns. Start with classic combinations like stripes and florals before experimenting with bolder mixes.",
+  
+  "sustainable fashion tips": "To shop more sustainably, look for quality pieces that last longer, choose natural or recycled fabrics, support ethical brands, consider secondhand options, repair items instead of replacing them, and wash clothes less frequently and in cold water to extend their lifespan."
+};
+
 /**
  * Generate a fashion response based on a query without using external API
  */
 export function generateLocalFashionResponse(query: string): TrendResponse {
-  const lowerQuery = query.toLowerCase();
+  const lowerQuery = query.toLowerCase().trim();
+  
+  // Check if query is empty or unclear
+  if (!lowerQuery || lowerQuery.length < 3 || lowerQuery === "?") {
+    return {
+      message: "I'm not sure I understood your question. Could you please provide more details about what fashion advice you're looking for?"
+    };
+  }
+  
+  // Check for small talk patterns
+  if (lowerQuery.match(/^(hi|hello|hey|greetings)/i)) {
+    return { message: SMALL_TALK_RESPONSES.greeting[Math.floor(Math.random() * SMALL_TALK_RESPONSES.greeting.length)] };
+  }
+  
+  if (lowerQuery.match(/^(thanks|thank you|thx)/i)) {
+    return { message: SMALL_TALK_RESPONSES.thanks[Math.floor(Math.random() * SMALL_TALK_RESPONSES.thanks.length)] };
+  }
+  
+  if (lowerQuery.match(/^(bye|goodbye|see you|farewell)/i)) {
+    return { message: SMALL_TALK_RESPONSES.goodbye[Math.floor(Math.random() * SMALL_TALK_RESPONSES.goodbye.length)] };
+  }
+  
+  if (lowerQuery.match(/how are you|how('s| is) it going|what('s| is) up/i)) {
+    return { message: SMALL_TALK_RESPONSES.how_are_you[Math.floor(Math.random() * SMALL_TALK_RESPONSES.how_are_you.length)] };
+  }
+  
+  // Check for common fashion FAQ
+  for (const [question, answer] of Object.entries(FASHION_FAQ)) {
+    if (lowerQuery.includes(question.toLowerCase())) {
+      return { message: answer };
+    }
+  }
+  
+  // Check for out-of-scope questions
+  const nonFashionTopics = [
+    'politics', 'religion', 'sports', 'recipe', 'cook', 'food', 'travel', 
+    'hotel', 'flight', 'vacation', 'weather', 'stock', 'invest', 'finance',
+    'math', 'solve', 'calculate', 'programming', 'code', 'health', 'medical',
+    'disease', 'illness', 'medicine'
+  ];
+  
+  if (nonFashionTopics.some(topic => lowerQuery.includes(topic))) {
+    return { 
+      message: "I'm a fashion assistant and can't provide advice on this topic. I'd be happy to help with style tips, outfit recommendations, or fashion trends instead!" 
+    };
+  }
   
   // Identify query type
   const isColorQuery = lowerQuery.includes('color') || lowerQuery.includes('palette') || lowerQuery.includes('trend');
@@ -193,6 +275,8 @@ export function generateLocalFashionResponse(query: string): TrendResponse {
   // Identify outfit type if mentioned
   let outfitType = 'casual'; // Default to casual
   if (lowerQuery.includes('formal') || lowerQuery.includes('business') || lowerQuery.includes('professional')) {
+    outfitType = 'formal';
+  } else if (lowerQuery.includes('party') || lowerQuery.includes('evening') || lowerQuery.includes('night out')) {
     outfitType = 'formal';
   } else if (lowerQuery.includes('seasonal') || lowerQuery.includes(season)) {
     outfitType = 'seasonal';
@@ -218,12 +302,21 @@ export function generateLocalFashionResponse(query: string): TrendResponse {
     response.message += ` Popular accessories include ${response.accessories.map((a: FashionAccessory) => a.name).join(', ')}.`;
   }
   
-  // If no specific query type identified, include a mix
+  // If no specific query type identified, try to give general fashion advice
   if (!isColorQuery && !isOutfitQuery && !isAccessoryQuery) {
-    response.colors = getSeasonalColors(season);
-    response.outfits = getOutfitRecommendations(outfitType);
-    response.accessories = getAccessoryRecommendations().slice(0, 2);
-    response.message = `Here's a fashion suggestion for you: Try wearing colors like ${response.colors.slice(0, 2).map((c: FashionColor) => c.name).join(' or ')} with ${response.outfits[0].description.toLowerCase()}. Add ${response.accessories[0].name.toLowerCase()} to complete the look.`;
+    // Check if it's a fashion-related query despite not having any specific keywords
+    const fashionTerms = ['style', 'fashion', 'clothes', 'clothing', 'wardrobe', 'dress', 'shirt', 'pants', 'shoes'];
+    const isFashionRelated = fashionTerms.some(term => lowerQuery.includes(term));
+    
+    if (isFashionRelated) {
+      response.colors = getSeasonalColors(season);
+      response.outfits = getOutfitRecommendations(outfitType);
+      response.accessories = getAccessoryRecommendations().slice(0, 2);
+      response.message = `Here's a fashion suggestion for you: Try wearing colors like ${response.colors.slice(0, 2).map((c: FashionColor) => c.name).join(' or ')} with ${response.outfits[0].description.toLowerCase()}. Add ${response.accessories[0].name.toLowerCase()} to complete the look.`;
+    } else {
+      // If we can't determine if it's fashion related, give a prompt to clarify
+      response.message = "I'm not sure I understand your fashion question. Could you ask about specific trends, outfit recommendations, color palettes, or styling advice?";
+    }
   }
   
   return response;

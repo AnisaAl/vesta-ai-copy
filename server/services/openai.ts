@@ -78,7 +78,7 @@ export async function generateFashionResponse(
     // Format the response for the front-end
     let formattedResponse = localResponse.message;
     
-    // Add JSON data for the frontend to parse
+    // Add JSON data for the frontend to parse only if we have fashion-specific data
     if (localResponse.colors || localResponse.outfits || localResponse.accessories) {
       formattedResponse += '\n\n```json\n' + JSON.stringify({
         colors: localResponse.colors || [],
@@ -159,7 +159,7 @@ export async function generateFashionResponse(
       // Format the response for the front-end
       let formattedResponse = localResponse.message;
       
-      // Add JSON data for the frontend to parse
+      // Add JSON data for the frontend to parse only if we have fashion-specific data
       if (localResponse.colors || localResponse.outfits || localResponse.accessories) {
         formattedResponse += '\n\n```json\n' + JSON.stringify({
           colors: localResponse.colors || [],
