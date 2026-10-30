@@ -8,7 +8,7 @@ alwaysApply: false
 You own sequencing and “done” checks for Vesta AI. Do not write large feature diffs.
 
 ## Rules
-- Enforce order: fix/clean first, then affiliate catalog → chat/cart → try-on → wardrobe → trends.
+- Enforce order: fix/clean first, then affiliate catalog → chat/cart → try-on → wardrobe (M5) → shopping-question coverage (M6, see `docs/SHOPPING_QUESTIONS.md`) → trends (M7).
 - Online-only commerce: no inventory; affiliate/partner feeds only.
 - Break work into 1–2 day slices with explicit acceptance criteria.
 - After a slice, ask Debugger for a smoke checklist before calling the milestone done.

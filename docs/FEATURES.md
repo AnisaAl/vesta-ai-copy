@@ -98,7 +98,9 @@ Vesta never takes payment. Affiliate deep links are per product, so each line op
 | 30 | View a profile preview (avatar, style preferences, favorite colors) | Placeholder | `Profile.tsx` — static, no editing |
 | 31 | Browse trending styles and color trends | Placeholder | `Trends.tsx` — hardcoded, images currently broken |
 
-Profile/trends persistence lands in Milestone 6 / auth.
+Trends (catalog aggregates) lands in Milestone 7; profile persistence needs auth.
+
+Shopping-question coverage (what chat can and cannot answer today) is tracked in [SHOPPING_QUESTIONS.md](SHOPPING_QUESTIONS.md) (Milestone 6).
 
 ---
 
@@ -152,6 +154,6 @@ The set is sized to exercise every retrieval path without padding:
 
 ## Not built yet
 
-Live trends from catalog aggregates (M6) · authentication, per-user profiles, and cart claiming on login · a browsable catalog page (products currently reach users only through chat) · abandoned-cart cleanup job · local Kolors VTO ([KOLORS.md](KOLORS.md)).
+Live trends from catalog aggregates (M7) · price/size/comparison/policy question support ([SHOPPING_QUESTIONS.md](SHOPPING_QUESTIONS.md)) · authentication, per-user profiles, and cart claiming on login · a browsable catalog page (products currently reach users only through chat) · abandoned-cart cleanup job · local Kolors VTO ([KOLORS.md](KOLORS.md)).
 
 See also [RISKS_AND_BACKLOG.md](RISKS_AND_BACKLOG.md) for deferred risks to pull into later milestones.

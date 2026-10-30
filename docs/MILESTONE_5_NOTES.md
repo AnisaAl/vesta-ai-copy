@@ -51,7 +51,7 @@ Images are served from `/uploads/...` when `STORAGE_MODE=local`.
 
 ## Out of scope
 
-M6 trends · Kolors · embeddings · auth-editable profile · merchant-of-record · selling wardrobe items.
+M7 trends (M6 is shopping-question coverage) · Kolors · embeddings · auth-editable profile · merchant-of-record · selling wardrobe items.
 
 ## Acceptance
 

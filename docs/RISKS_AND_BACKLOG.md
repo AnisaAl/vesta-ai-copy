@@ -6,7 +6,9 @@ Deferred work and known risks. Pull items into a milestone when they become bloc
 
 | Risk / gap | Why it matters | Likely milestone |
 |------------|----------------|------------------|
-| Trends page is hardcoded; images broken | Misleading “live” trends | M6 — catalog aggregates |
+| Trends page is hardcoded; images broken | Misleading “live” trends | M7 — catalog aggregates |
+| Chat cannot answer price, size, stock, comparison, or policy questions | Users expect them; today Claude prose may guess | M6 catalogs gaps in [SHOPPING_QUESTIONS.md](SHOPPING_QUESTIONS.md); build later slices (price filter first) |
+| Size / stock / shipping / returns data absent from affiliate feed | Agent must not invent merchant facts | Needs feed fields or merchant links; never fabricate |
 | Profile is static (no edit) | Fake personalization | Auth + editable profile |
 | No browsable catalog page | Products only via chat | Catalog UI slice |
 | Wardrobe items must never be sold | Own-closet photos ≠ affiliate inventory | M5 keeps: no `productId` / no Add to bag on wardrobe cards |
