@@ -17,8 +17,19 @@ import {
 } from "../services/fashionIntent";
 import { searchDeepFashionDetailed } from "../services/deepFashion";
 import { trySmallTalkReply, HELP_TAIL } from "../services/fashionSmallTalk";
-import { CHAT_SIMULATIONS, ChatTurnExpect } from "../fixtures/chat-simulations";
+import {
+  formatWardrobeInventory,
+  selectWardrobeForChat,
+} from "../services/wardrobe";
+import {
+  CHAT_SIMULATIONS,
+  ChatTurnExpect,
+  NOT_SIMULATABLE,
+} from "../fixtures/chat-simulations";
 import { MOCK_CHAT_CATALOG, MockSimItem } from "../fixtures/chat-sim-catalog";
+import type { WardrobeItem } from "@shared/schema";
+import fs from "node:fs";
+import path from "node:path";
 
 type CaseResult = { name: string; ok: boolean; detail: string; hint?: string };
 
@@ -37,6 +48,9 @@ interface SimulatedTurn {
   plan: FashionQueryPlan | null;
   outfits: SimOutfit[];
   injected: boolean;
+  /** Closet cards chat would prepend (non-shoppable). */
+  wardrobeCards: { productId?: unknown; affiliateUrl?: unknown }[];
+  wardrobeInventory: string;
 }
 
 const USE_CORPUS = process.env.EVAL_CHAT_CORPUS === "1";
@@ -141,8 +155,10 @@ function retrieve(plan: FashionQueryPlan, limit: number): SimOutfit[] {
 function simulateTurn(
   userMessage: string,
   priorUserTexts: string[],
-  hasImage: boolean
+  hasImage: boolean,
+  wardrobe: WardrobeItem[] = []
 ): SimulatedTurn {
+  const wardrobeInventory = formatWardrobeInventory(wardrobe);
   if (!hasImage) {
     const smallTalk = trySmallTalkReply(userMessage);
     if (smallTalk) {
@@ -152,11 +168,15 @@ function simulateTurn(
         plan: null,
         outfits: [],
         injected: false,
+        wardrobeCards: [],
+        wardrobeInventory,
       };
     }
   }
 
   const plan = buildRetrievalPlan(userMessage, hasImage, priorUserTexts);
+  // Same call fashionAi makes; closet cards attach even when catalog cards are skipped.
+  const wardrobeCards = selectWardrobeForChat(wardrobe, plan, userMessage, 2);
   if (plan.needsFollowUp || !wouldInjectCards(plan, userMessage)) {
     return {
       kind: "followUp",
@@ -164,6 +184,8 @@ function simulateTurn(
       plan,
       outfits: [],
       injected: false,
+      wardrobeCards,
+      wardrobeInventory,
     };
   }
 
@@ -174,6 +196,8 @@ function simulateTurn(
     plan,
     outfits,
     injected: outfits.length > 0,
+    wardrobeCards,
+    wardrobeInventory,
   };
 }
 
@@ -310,6 +334,30 @@ function checkExpect(
     );
   }
 
+  if (expect.wardrobeMin !== undefined) {
+    out.push(
+      assert(
+        `${label}:wardrobeMin`,
+        sim.wardrobeCards.length >= expect.wardrobeMin,
+        `closet cards=${sim.wardrobeCards.length} (expected >= ${expect.wardrobeMin})`,
+        hint
+      )
+    );
+  }
+  if (expect.wardrobeNotShoppable) {
+    const shoppable = sim.wardrobeCards.some((c) => c.productId || c.affiliateUrl);
+    out.push(
+      assert(
+        `${label}:wardrobeNotShoppable`,
+        !shoppable && /NOT for sale/.test(sim.wardrobeInventory),
+        shoppable
+          ? "closet card has productId/affiliateUrl"
+          : `inventory=${sim.wardrobeInventory.slice(0, 60)}`,
+        hint
+      )
+    );
+  }
+
   out.push(
     assert(
       `${label}:not-confused`,
@@ -322,8 +370,66 @@ function checkExpect(
   return out;
 }
 
+const CATALOG_PATH = path.resolve(process.cwd(), "docs/SHOPPING_QUESTIONS.md");
+
+/** Parse `| A1 | question | S | notes |` rows from the shopper question catalog. */
+function readCatalogStatuses(): Map<string, "S" | "P" | "N"> {
+  const map = new Map<string, "S" | "P" | "N">();
+  const text = fs.readFileSync(CATALOG_PATH, "utf8");
+  for (const line of text.split("\n")) {
+    const m = line.match(/^\|\s*([A-L]\d+)\s*\|.*\|\s*([SPN])\s*\|/);
+    if (m) map.set(m[1], m[2] as "S" | "P" | "N");
+  }
+  return map;
+}
+
+/**
+ * Keep docs/SHOPPING_QUESTIONS.md and the sims in sync:
+ *  - S rows need a supported sim (or a NOT_SIMULATABLE reason)
+ *  - P/N rows need a pending sim (or a NOT_SIMULATABLE reason)
+ *  - sims may only reference IDs that exist, with a matching status
+ */
+function checkCatalogCoverage(): CaseResult[] {
+  const out: CaseResult[] = [];
+  const catalog = readCatalogStatuses();
+  const supportedIds = new Set<string>();
+  const pendingIds = new Set<string>();
+
+  for (const sim of CHAT_SIMULATIONS) {
+    for (const id of sim.questionIds) {
+      (sim.status === "supported" ? supportedIds : pendingIds).add(id);
+      const row = catalog.get(id);
+      if (!row) {
+        out.push(assert(`coverage:${sim.name}`, false, `questionId ${id} not in catalog`));
+      } else if (sim.status === "supported" && row !== "S") {
+        out.push(assert(`coverage:${sim.name}`, false, `${id} is ${row} in catalog but sim is supported`));
+      } else if (sim.status === "pending" && row === "S") {
+        out.push(assert(`coverage:${sim.name}`, false, `${id} is S in catalog but sim is pending`));
+      }
+    }
+  }
+
+  for (const [id, row] of Array.from(catalog.entries())) {
+    const covered = row === "S" ? supportedIds.has(id) : pendingIds.has(id);
+    const exempt = id in NOT_SIMULATABLE;
+    out.push(
+      assert(
+        `coverage:${id}`,
+        covered || exempt,
+        covered
+          ? `${row} covered by ${row === "S" ? "supported" : "pending"} sim`
+          : exempt
+            ? `not simulatable: ${NOT_SIMULATABLE[id]}`
+            : `${row} row has no ${row === "S" ? "supported" : "pending"} sim and no NOT_SIMULATABLE entry`
+      )
+    );
+  }
+  return out;
+}
+
 function run(): number {
   const results: CaseResult[] = [];
+  const pendingLines: string[] = [];
   console.log(
     USE_CORPUS
       ? "eval:chat — DeepFashion corpus (still no Claude)\n"
@@ -333,12 +439,26 @@ function run(): number {
   for (const sim of CHAT_SIMULATIONS) {
     const prior: string[] = [];
     sim.turns.forEach((turn, i) => {
-      const out = simulateTurn(turn.user, prior, Boolean(turn.hasImage));
+      const out = simulateTurn(turn.user, prior, Boolean(turn.hasImage), turn.wardrobe);
       const label = `${sim.name}/t${i + 1}`;
-      results.push(...checkExpect(label, out, turn.expect, turn.hint));
+      if (sim.status === "pending") {
+        const plan = out.plan;
+        const router = plan
+          ? `${out.kind} intent=${plan.intent} anchor=${plan.anchorGarment}`
+          : out.kind;
+        pendingLines.push(
+          `PEND  ${sim.questionIds.join(",")} "${turn.user}" — router today: ${router} | gap: ${sim.gap}`
+        );
+      } else if (!turn.expect) {
+        results.push(assert(`${label}:expect`, false, "supported sim turn is missing expect"));
+      } else {
+        results.push(...checkExpect(label, out, turn.expect, turn.hint));
+      }
       prior.push(turn.user);
     });
   }
+
+  results.push(...checkCatalogCoverage());
 
   let failed = 0;
   for (const r of results) {
@@ -347,9 +467,14 @@ function run(): number {
     const hint = !r.ok && r.hint ? ` | improve: ${r.hint}` : "";
     console.log(`${mark}  ${r.name} — ${r.detail}${hint}`);
   }
+  if (pendingLines.length) {
+    console.log("");
+    for (const line of pendingLines) console.log(line);
+  }
   console.log(
     `\n${results.length - failed}/${results.length} passed` +
-      (failed ? ` (${failed} failed)` : "")
+      (failed ? ` (${failed} failed)` : "") +
+      `, ${pendingLines.length} pending`
   );
   return failed;
 }

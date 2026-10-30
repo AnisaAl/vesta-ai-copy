@@ -30,7 +30,7 @@ Baseline code: `server/services/fashionIntent.ts` (intents `similar` / `combine`
 | ID | Question | Status | Notes / target |
 |----|----------|--------|----------------|
 | B1 | What pants go with this t-shirt? | S | `combine` intent |
-| B2 | Complete this look with shoes and a bag | S | `combine` targets |
+| B2 | Complete this look (photo) | S | `combine` targets. Naming "shoes and a bag" in the text flips the anchor to shoes, so those words do not steer targets |
 | B3 | What colors go with navy? | S | `color` intent |
 | B4 | Style this blazer three ways | P | One retrieval pass only |
 | B5 | What goes with the jeans in my wardrobe? | S | Wardrobe grounding (M5) |
@@ -103,7 +103,7 @@ Baseline code: `server/services/fashionIntent.ts` (intents `similar` / `combine`
 
 | ID | Question | Status | Notes / target |
 |----|----------|--------|----------------|
-| I1 | What do I own that is black? | S | Wardrobe inventory in prompt |
+| I1 | What do I own that is black? | P | Inventory is in the prompt, but the router reads "what" as the accessory "hat" and asks a follow-up (see Known router bug) |
 | I2 | What am I missing in my wardrobe? | P | Prose only |
 | I3 | What should I buy to get more outfits from what I own? | P | Needs gap-to-catalog retrieval |
 | I4 | Rename or remove a wardrobe item via chat | N | UI only |
@@ -144,5 +144,9 @@ Baseline code: `server/services/fashionIntent.ts` (intents `similar` / `combine`
 | Variants / pagination | A5-A7, J2 | Variant grouping, result exclusion |
 | Smarter wardrobe | B6, B7, I2, I3 | Wardrobe-vs-catalog matching |
 | Occasion / season | C1-C5 | Occasion and season tags in retrieval |
+
+## Known router bug (found while building the M6 sims)
+
+`detectAnchorCategory` in `server/services/fashionIntent.ts` matches category words with `String.includes`. The accessory word "hat" matches inside "what", so any question starting with "what" and naming no garment (for example "what size should I get", "what is your return policy", "what do I own that is black") is classified as `browse` on `accessory` and answered with the "Are you shopping for men or women?" follow-up. Short words like "tee", "top", "bag" have the same substring risk ("meet", "stop", "baggy"). Fix is word-boundary matching; deliberately not done in M6 (no behavior changes), tracked in [RISKS_AND_BACKLOG.md](RISKS_AND_BACKLOG.md).
 
 Hard constraints stay in force: affiliate-only commerce, wardrobe items never sold, no merchant-of-record, no embeddings in this milestone.

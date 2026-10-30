@@ -39,6 +39,7 @@ Deferred work and known risks. Pull items into a milestone when they become bloc
 |------------|----------------|------------------|
 | No embeddings / vector search | Caption + tag heuristics only | Later quality pass |
 | Claude mentor prose not covered by `eval:chat` | Router/retrieval only | Expand evals if mentor regressions bite |
+| Category detection uses substring match ("hat" matches "what") | "What ..." questions without a garment word get a wrong follow-up (`browse` accessory) | First fix after M6: word-boundary match in `detectAnchorCategory`; then promote `pending-i1` sim to supported. See [SHOPPING_QUESTIONS.md](SHOPPING_QUESTIONS.md) |
 | Gender / audience edge cases | DeepFashion filenames + captions | Re-run `eval:retrieval` / corpus chat eval after intent changes |
 | S3/R2 storage stub | Local `./uploads` only | Cloud lift when deploying multi-instance |
 

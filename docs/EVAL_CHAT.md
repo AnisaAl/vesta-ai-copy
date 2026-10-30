@@ -52,6 +52,17 @@ Mentor **prose from Claude is not tested**. This suite checks the router: small 
 
 Edit `server/fixtures/chat-simulations.ts` to add a conversation. Each turn is a fake user line plus expects (`kind`, `intent`, outfit counts, `noMen`, help question, …). Multi-turn cases (e.g. blazers → “for women, casual”) pass prior user texts into `buildRetrievalPlan`, same as production chat history.
 
+## Shopper question coverage (M6)
+
+Every simulation carries `questionIds` pointing at rows in [SHOPPING_QUESTIONS.md](SHOPPING_QUESTIONS.md) and a `status`:
+
+- `supported` — asserted; failures fail the run.
+- `pending` — a question the agent does not handle yet. Never asserted: the runner prints a `PEND` line with what the router does today and the gap.
+
+The runner also parses the catalog and fails if the two drift: an `S` row needs a supported sim, a `P`/`N` row needs a pending sim, and anything else must be listed in `NOT_SIMULATABLE` with a reason. Wardrobe turns can pass a closet (`wardrobe`) and assert `wardrobeMin` / `wardrobeNotShoppable`.
+
+To promote a question: build the feature, flip the catalog row to `S`, change the sim to `supported` and add an `expect`.
+
 ## Adding a case after a prompt change
 
 1. Add a block to `CHAT_SIMULATIONS` in `server/fixtures/chat-simulations.ts`.
