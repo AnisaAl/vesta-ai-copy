@@ -23,6 +23,12 @@ export interface FashionOutfit {
   name: string;
   description: string;
   imageUrl: string;
+  /** Present on affiliate catalog rows (shop on merchant — Milestone 3 cart). */
+  affiliateUrl?: string;
+  priceCents?: number;
+  currency?: string;
+  merchant?: string;
+  source?: "affiliate" | "deepfashion" | "sample";
 }
 
 export interface FashionAccessory {
@@ -34,6 +40,7 @@ export interface FashionAccessory {
 
 export interface TrendResponse {
   message: string;
+  intent?: string;
   colors?: FashionColor[];
   outfits?: FashionOutfit[];
   accessories?: FashionAccessory[];

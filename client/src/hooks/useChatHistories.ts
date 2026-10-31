@@ -2,21 +2,18 @@ import { useState, useCallback } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { ChatHistoryItem } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { LOCAL_USER_ID } from '@/lib/localUser';
 
 export function useChatHistories() {
   const [chatHistories, setChatHistories] = useState<ChatHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  // For simplicity, we're using a dummy user ID (1)
-  // In a real app, this would come from authentication
-  const dummyUserId = 1;
-
   const fetchChatHistories = useCallback(async () => {
     try {
       setIsLoading(true);
       
-      const response = await apiRequest('GET', `/api/chat/histories/${dummyUserId}`);
+      const response = await apiRequest('GET', `/api/chat/histories/${LOCAL_USER_ID}`);
       
       if (response.ok) {
         const data = await response.json();

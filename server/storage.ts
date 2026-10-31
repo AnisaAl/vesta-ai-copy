@@ -1,24 +1,92 @@
-import { users, chatHistories, type User, type InsertUser, type ChatHistory, type InsertChatHistory, type Message } from "@shared/schema";
+import {
+  users,
+  chatHistories,
+  products,
+  type User,
+  type InsertUser,
+  type ChatHistory,
+  type InsertChatHistory,
+  type Message,
+  type Product,
+  type InsertProduct,
+} from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { and, eq, ilike, or, isNull, sql, SQL } from "drizzle-orm";
 
-// Storage interface for user and chat history operations
+export interface CatalogQuery {
+  audience?: string;
+  category?: string;
+  color?: string;
+  style?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+  activeOnly?: boolean;
+}
+
 export interface IStorage {
-  // User operations
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  
-  // Chat history operations
+  ensureLocalUser(id?: number): Promise<User>;
+
   getChatHistory(id: number): Promise<ChatHistory | undefined>;
   getChatHistoriesByUserId(userId: number): Promise<ChatHistory[]>;
   createChatHistory(chatHistory: InsertChatHistory): Promise<ChatHistory>;
   updateChatHistory(id: number, messages: Message[]): Promise<ChatHistory | undefined>;
+
+  listProducts(query?: CatalogQuery): Promise<Product[]>;
+  countProducts(query?: CatalogQuery): Promise<number>;
+  getProductById(id: number): Promise<Product | undefined>;
+  upsertProduct(product: InsertProduct): Promise<Product>;
 }
 
-// Database implementation of the storage interface
+function buildProductFilters(query: CatalogQuery = {}): SQL[] {
+  const filters: SQL[] = [];
+  const activeOnly = query.activeOnly !== false;
+  if (activeOnly) {
+    filters.push(eq(products.isActive, true));
+  }
+  if (query.audience && query.audience !== "any") {
+    // feminine/masculine: include matching + any (unisex)
+    filters.push(
+      or(
+        eq(products.audience, query.audience),
+        eq(products.audience, "any")
+      )!
+    );
+  }
+  if (query.category) {
+    filters.push(eq(products.category, query.category));
+  }
+  if (query.search) {
+    const term = `%${query.search}%`;
+    filters.push(
+      or(ilike(products.title, term), ilike(products.description, term))!
+    );
+  }
+  if (query.color) {
+    const c = query.color.toLowerCase();
+    filters.push(
+      sql`EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(${products.colors}) AS col
+        WHERE lower(col) = ${c}
+      )`
+    );
+  }
+  if (query.style) {
+    const s = query.style.toLowerCase();
+    filters.push(
+      sql`EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(${products.styleTags}) AS tag
+        WHERE lower(tag) = ${s}
+      )`
+    );
+  }
+  return filters;
+}
+
 export class DatabaseStorage implements IStorage {
-  // User operations
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user || undefined;
@@ -30,23 +98,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
-  
-  // Chat history operations
+
+  async ensureLocalUser(_id: number = 1): Promise<User> {
+    const byName = await this.getUserByUsername("local");
+    if (byName) return byName;
+
+    return this.createUser({
+      username: "local",
+      password: "local-mvp-not-for-production",
+    });
+  }
+
   async getChatHistory(id: number): Promise<ChatHistory | undefined> {
-    const [history] = await db.select().from(chatHistories).where(eq(chatHistories.id, id));
+    const [history] = await db
+      .select()
+      .from(chatHistories)
+      .where(eq(chatHistories.id, id));
     return history || undefined;
   }
-  
+
   async getChatHistoriesByUserId(userId: number): Promise<ChatHistory[]> {
-    return await db.select().from(chatHistories).where(eq(chatHistories.userId, userId));
+    return await db
+      .select()
+      .from(chatHistories)
+      .where(or(eq(chatHistories.userId, userId), isNull(chatHistories.userId)));
   }
-  
+
   async createChatHistory(chatHistory: InsertChatHistory): Promise<ChatHistory> {
     const [history] = await db
       .insert(chatHistories)
@@ -54,20 +134,106 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return history;
   }
-  
-  async updateChatHistory(id: number, messages: Message[]): Promise<ChatHistory | undefined> {
+
+  async updateChatHistory(
+    id: number,
+    messages: Message[]
+  ): Promise<ChatHistory | undefined> {
     const [updatedHistory] = await db
       .update(chatHistories)
-      .set({ 
+      .set({
         messages: messages,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       })
       .where(eq(chatHistories.id, id))
       .returning();
-    
+
     return updatedHistory || undefined;
+  }
+
+  async listProducts(query: CatalogQuery = {}): Promise<Product[]> {
+    const filters = buildProductFilters(query);
+    const limit = Math.min(Math.max(query.limit ?? 24, 1), 100);
+    const offset = Math.max(query.offset ?? 0, 0);
+
+    const q = db.select().from(products);
+    if (filters.length > 0) {
+      return q
+        .where(and(...filters))
+        .limit(limit)
+        .offset(offset);
+    }
+    return q.limit(limit).offset(offset);
+  }
+
+  async countProducts(query: CatalogQuery = {}): Promise<number> {
+    const filters = buildProductFilters(query);
+    const base = db.select({ count: sql<number>`count(*)::int` }).from(products);
+    const [row] =
+      filters.length > 0
+        ? await base.where(and(...filters))
+        : await base;
+    return row?.count ?? 0;
+  }
+
+  async getProductById(id: number): Promise<Product | undefined> {
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, id));
+    return product || undefined;
+  }
+
+  async upsertProduct(product: InsertProduct): Promise<Product> {
+    const colors = Array.isArray(product.colors)
+      ? ([...product.colors] as string[])
+      : ([] as string[]);
+    const styleTags = Array.isArray(product.styleTags)
+      ? ([...product.styleTags] as string[])
+      : ([] as string[]);
+    const payload = {
+      externalId: product.externalId,
+      merchant: product.merchant,
+      title: product.title,
+      description: product.description ?? "",
+      imageUrl: product.imageUrl,
+      affiliateUrl: product.affiliateUrl,
+      priceCents: product.priceCents ?? null,
+      currency: product.currency ?? "USD",
+      category: product.category ?? "unknown",
+      audience: product.audience ?? "any",
+      colors,
+      styleTags,
+      isActive: product.isActive ?? true,
+      raw: product.raw ?? null,
+    };
+
+    const existing = await db
+      .select()
+      .from(products)
+      .where(
+        and(
+          eq(products.merchant, product.merchant),
+          eq(products.externalId, product.externalId)
+        )
+      )
+      .limit(1);
+
+    if (existing[0]) {
+      const [updated] = await db
+        .update(products)
+        .set({
+          ...payload,
+          updatedAt: new Date(),
+        })
+        .where(eq(products.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db.insert(products).values(payload).returning();
+    return created;
   }
 }
 
-// Export a single instance of the storage interface
 export const storage = new DatabaseStorage();

@@ -157,9 +157,14 @@ export default function VirtualTryOn({ open, onOpenChange, productImageUrl, prod
         <DialogHeader>
           <DialogTitle>Virtual Try-On</DialogTitle>
           <DialogDescription>
-            Upload a photo of yourself to see how {productName} looks on you
+            Demo preview — not production Kolors quality yet. Upload a photo to see a
+            approximate composite of how {productName} might look on you.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 mb-2">
+          Demo mode: results may be a simple overlay until a real try-on model is wired.
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
           {/* Product Image */}

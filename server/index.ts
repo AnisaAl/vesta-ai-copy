@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import path from "path";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { objectStorage } from "./services/objectStorage";
 
 const app = express();
 // Increase the payload size limit to 50MB for handling images
@@ -10,16 +11,21 @@ app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
 // Serve DeepFashion-MultiModal images as static files
 const deepFashionImagesPath = path.join(
-  process.cwd(),
-  "server",
-  "data",
-  "DeepFashion-MultiModal",
+  process.env.DEEPFASHION_ROOT ||
+    path.join(process.cwd(), "server", "data", "DeepFashion-MultiModal"),
   "images",
 );
 app.use(
   "/data/deepfashion/images",
   express.static(deepFashionImagesPath),
 );
+
+// Local uploads (wardrobe / future product assets) when STORAGE_MODE=local
+if ((process.env.STORAGE_MODE || "local") === "local") {
+  const uploadsRoot =
+    process.env.STORAGE_LOCAL_ROOT || path.join(process.cwd(), "uploads");
+  app.use("/uploads", express.static(uploadsRoot));
+}
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -36,12 +42,10 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      // Avoid dumping large chat/image payloads into the console
+      if (capturedJsonResponse && path !== "/api/chat" && path !== "/api/virtual-try-on") {
+        const snippet = JSON.stringify(capturedJsonResponse);
+        logLine += ` :: ${snippet.length > 120 ? snippet.slice(0, 119) + "…" : snippet}`;
       }
 
       log(logLine);
@@ -52,6 +56,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  if ((process.env.STORAGE_MODE || "local") === "local") {
+    await objectStorage.ensureReady();
+    log(`object storage ready (mode=${objectStorage.mode})`);
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -71,19 +80,9 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  // const port = 3000;
-  // server.listen({
-  //   port,
-  //   host: "0.0.0.0",
-  //   reusePort: true,
-  // }, () => {
-  //   log(`serving on port ${port}`);
-  // });
   const PORT = Number(process.env.PORT) || 3000;
-  server.listen(PORT, 'localhost', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const HOST = process.env.HOST || "localhost";
+  server.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
   });
 })();

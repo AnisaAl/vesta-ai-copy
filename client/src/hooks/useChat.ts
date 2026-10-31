@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { Message, ChatResponse, ChatHistoryItem } from '@/lib/types';
+import { Message, ChatResponse } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { useToast } from '@/hooks/use-toast';
+import { LOCAL_USER_ID } from '@/lib/localUser';
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -50,7 +51,7 @@ export function useChat() {
         // Create new chat history
         const response = await apiRequest('POST', '/api/chat/history', {
           messages: messagesToSave,
-          // In a real app with auth, we would include the user ID here
+          userId: LOCAL_USER_ID,
         });
         
         if (response.ok) {

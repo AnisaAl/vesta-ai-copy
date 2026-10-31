@@ -33,21 +33,18 @@ export default function OutfitGrid({ outfits }: OutfitGridProps) {
               aria-label={outfit.name}
             />
             <p className="text-xs font-semibold text-center mt-1 mb-0.5">{outfit.name}</p>
-            <p className="text-[10px] text-[#6B6B6B] text-center mb-1">{outfit.description}</p>
-            <p className="text-[10px] text-[#A0A0A0] mb-2">Shop: noshop</p>
-            <div className="flex gap-1 w-full justify-center">
-              <button 
-                className="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded hover:bg-gray-300 transition-colors" 
-                onClick={() => handleTryOn(outfit)}
-              >
-                Try it on
-              </button>
-              <button className="bg-black text-white text-xs px-2 py-1 rounded hover:bg-gray-800">Select</button>
-            </div>
+            <p className="text-[10px] text-[#6B6B6B] text-center mb-2">{outfit.description}</p>
+            <button
+              type="button"
+              className="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded hover:bg-gray-300 transition-colors w-full"
+              onClick={() => handleTryOn(outfit)}
+            >
+              Try it on
+            </button>
           </div>
         ))}
       </div>
-      
+
       {selectedOutfit && (
         <VirtualTryOn
           open={isTryOnOpen}

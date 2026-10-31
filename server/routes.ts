@@ -3,11 +3,20 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
 import { messageSchema } from "@shared/schema";
-import { generateFashionResponse } from "./services/openai";
+import { generateFashionResponse } from "./services/fashionAi";
 import { processVirtualTryOn } from "./services/virtualTryOn";
 import { getDeepFashionRecommendations, getDeepFashionOutfits } from "./services/deepFashion";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Health check for Docker / load balancers
+  app.get('/api/health', async (_req, res) => {
+    return res.json({
+      status: 'ok',
+      storageMode: process.env.STORAGE_MODE || 'local',
+      pythonServiceConfigured: Boolean(process.env.PYTHON_SERVICE_URL),
+    });
+  });
+
   // Chat endpoint
   app.post('/api/chat', async (req, res) => {
     try {
@@ -19,7 +28,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedData = requestSchema.parse(req.body);
       
-      // Process the message with OpenAI (with or without image)
+      // Process the message with Claude (with or without image)
       const response = await generateFashionResponse(
         validatedData.message, 
         validatedData.history || [],
@@ -41,14 +50,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const requestSchema = z.object({
         messages: z.array(messageSchema),
-        userId: z.number().optional() // Optional for now, would be required in real app with auth
+        userId: z.number().optional()
       });
 
       const validatedData = requestSchema.parse(req.body);
+      const localUser = await storage.ensureLocalUser();
       
-      // Create new chat history in database
       const chatHistory = await storage.createChatHistory({
-        userId: validatedData.userId,
+        userId: localUser.id,
         messages: validatedData.messages
       });
       
@@ -87,7 +96,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Get all chat histories for a user
+  // Get all chat histories for a user (userId 1 = local MVP user)
   app.get('/api/chat/histories/:userId', async (req, res) => {
     try {
       const userId = parseInt(req.params.userId);
@@ -95,8 +104,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(userId)) {
         return res.status(400).json({ message: 'Invalid user ID' });
       }
-      
-      const chatHistories = await storage.getChatHistoriesByUserId(userId);
+
+      const localUser = await storage.ensureLocalUser();
+      const resolvedId = userId === 1 ? localUser.id : userId;
+      const chatHistories = await storage.getChatHistoriesByUserId(resolvedId);
       
       return res.json(chatHistories);
     } catch (error) {
@@ -196,6 +207,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Error getting recommendations:', error);
       return res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Error getting recommendations' 
+      });
+    }
+  });
+
+  /**
+   * Affiliate product catalog (online-only). Filters: audience, category, color, style, search.
+   * Cart / checkout handoff is Milestone 3 — this returns shoppable affiliateUrl only.
+   */
+  app.get('/api/catalog', async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(String(req.query.limit || '24'), 10) || 24, 100);
+      const offset = Math.max(parseInt(String(req.query.offset || '0'), 10) || 0, 0);
+      const audience = typeof req.query.audience === 'string' ? req.query.audience : undefined;
+      const category = typeof req.query.category === 'string' ? req.query.category : undefined;
+      const color = typeof req.query.color === 'string' ? req.query.color : undefined;
+      const style = typeof req.query.style === 'string' ? req.query.style : undefined;
+      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      // alias gender → audience
+      const gender = typeof req.query.gender === 'string' ? req.query.gender : undefined;
+      const resolvedAudience = audience || gender;
+
+      const query = {
+        audience: resolvedAudience,
+        category,
+        color,
+        style,
+        search,
+        limit,
+        offset,
+        activeOnly: true,
+      };
+
+      const [items, total] = await Promise.all([
+        storage.listProducts(query),
+        storage.countProducts(query),
+      ]);
+
+      return res.json({
+        success: true,
+        total,
+        limit,
+        offset,
+        products: items.map((p) => ({
+          id: p.id,
+          externalId: p.externalId,
+          merchant: p.merchant,
+          title: p.title,
+          description: p.description,
+          imageUrl: p.imageUrl,
+          affiliateUrl: p.affiliateUrl,
+          priceCents: p.priceCents,
+          currency: p.currency,
+          category: p.category,
+          audience: p.audience,
+          colors: p.colors,
+          styleTags: p.styleTags,
+        })),
+      });
+    } catch (error) {
+      console.error('Error listing catalog:', error);
+      return res.status(500).json({
+        message: error instanceof Error ? error.message : 'Error listing catalog',
       });
     }
   });

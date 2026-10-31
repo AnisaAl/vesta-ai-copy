@@ -97,7 +97,7 @@ PYTHON_SERVICE_URL=http://localhost:8000
 
 1. Start your Python service (if using Option 1)
 2. Start the Node.js server: `npm run dev`
-3. Navigate to the Recommendations page or use the chat to get outfit recommendations
+3. Use chat outfit cards and open **Try it on** (demo mode is labeled in the dialog)
 4. Click "Try it on" or "Virtual Try-On" button
 5. Upload a photo and click "Try It On"
 

@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vesta-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vesta
+      POSTGRES_PASSWORD: vesta
+      POSTGRES_DB: vesta_ai
+    ports:
+      # Host port is configurable so a local Postgres on 5432 does not block Compose
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - vesta_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vesta -d vesta_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vesta-api
+    restart: unless-stopped
+    profiles: ["full"]
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      DATABASE_URL: postgresql://vesta:vesta@postgres:5432/vesta_ai
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      STORAGE_MODE: local
+      STORAGE_LOCAL_ROOT: /app/uploads
+      # Only set when the vto profile is running; empty avoids failed try-on calls
+      PYTHON_SERVICE_URL: ${PYTHON_SERVICE_URL:-}
+      # Must match the bind mount below (dataset is dockerignored, not baked into the image)
+      DEEPFASHION_ROOT: /app/server/data/DeepFashion-MultiModal
+    volumes:
+      - vesta_uploads:/app/uploads
+      # Required for outfit images in chat/recommendations when using --profile full.
+      # Host path: ./server/data/DeepFashion-MultiModal (images/ + captions.json)
+      - ./server/data/DeepFashion-MultiModal:/app/server/data/DeepFashion-MultiModal:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  vto:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: vesta-vto
+    restart: unless-stopped
+    profiles: ["vto"]
+    ports:
+      - "8000:8000"
+    environment:
+      FLASK_ENV: production
+
+volumes:
+  vesta_pg_data:
+  vesta_uploads:

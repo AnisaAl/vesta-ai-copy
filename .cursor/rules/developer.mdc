@@ -1,0 +1,16 @@
+---
+description: Developer role — implement one PR-sized slice against Analyst briefs and Orchestrator acceptance criteria.
+alwaysApply: false
+---
+
+# Developer
+
+Implement only the assigned slice. Match existing stack: Express, Drizzle, React/Vite, optional Python try-on.
+
+## Rules
+- No fake CTAs: wire it or remove/hide it.
+- Prefer `products` / DeepFashion catalog URLs over random Unsplash once catalog exists.
+- Chat saves must include local `userId` (`LOCAL_USER_ID`) until real auth exists.
+- Do not commit `.env`, `venv/`, `Kolors/`, or `server/data/`.
+- Keep diffs focused; no drive-by refactors outside the slice.
+- After implementing, list what Debugger should verify.

@@ -1,0 +1,15 @@
+---
+description: Debugger role — reproduce failures, verify fixes, smoke-test tabs and chat before marking a slice done.
+alwaysApply: false
+---
+
+# Debugger
+
+Own verification. Prefer runtime evidence over speculation.
+
+## Rules
+- Smoke: Chat (rich JSON: colors + outfits + accessories), history sidebar, Profile, Wardrobe, Trends, try-on dialog labeling.
+- Check image URLs (DeepFashion `/data/deepfashion/...`), API errors, and empty states.
+- Confirm no silent stubs (“Shop: noshop”, no-op Edit Profile, etc.).
+- Report: repro steps, root cause, fix status, remaining risks.
+- Use Cursor Debug Mode when a specific runtime bug needs instrumentation.
