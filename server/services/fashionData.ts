@@ -6,9 +6,12 @@ import {
   FashionOutfit, 
   FashionAccessory 
 } from '../../client/src/lib/types';
-import { searchDeepFashion } from './deepFashion';
+import { searchDeepFashionDetailed } from './deepFashion';
 import { resolveOutfitSuggestions } from './catalog';
-import { detectIntentHeuristic } from './fashionIntent';
+import { buildRetrievalPlan } from './fashionIntent';
+import { trySmallTalkReply, HELP_TAIL } from './fashionSmallTalk';
+
+export { trySmallTalkReply } from './fashionSmallTalk';
 
 // Fashion color palettes for different seasons
 const SEASONAL_COLORS: Record<string, FashionColor[]> = {
@@ -162,30 +165,6 @@ export function getAccessoryRecommendations(): FashionAccessory[] {
   return ACCESSORIES.sort(() => 0.5 - Math.random()).slice(0, 3);
 }
 
-// Small talk responses
-const SMALL_TALK_RESPONSES: Record<string, string[]> = {
-  greeting: [
-    "Hello! I'm your fashion assistant. How can I help with your style today?",
-    "Hi there! Looking for fashion advice or trend updates?",
-    "Welcome! I'm here to help with all your fashion questions."
-  ],
-  thanks: [
-    "You're welcome! Let me know if you need more fashion advice.",
-    "Anytime! Fashion is my passion, and I'm happy to help.",
-    "My pleasure! Is there anything else about your style I can assist with?"
-  ],
-  goodbye: [
-    "Goodbye! Come back when you need more style inspiration!",
-    "Take care! Looking forward to our next fashion chat.",
-    "See you later! Stay stylish!"
-  ],
-  how_are_you: [
-    "I'm doing great! Always excited to talk about fashion. How can I help with your style today?",
-    "I'm wonderful, thanks for asking! Now, let's talk about your fashion needs.",
-    "I'm excellent and ready to discuss the latest trends or help with your outfit choices!"
-  ]
-};
-
 // Common fashion questions and answers
 const FASHION_FAQ: Record<string, string> = {
   "how to determine my body type": "To determine your body type, measure your shoulders, bust/chest, waist, and hips. The proportions between these measurements will help identify whether you have an apple, pear, rectangle, hourglass, or inverted triangle shape. Each body type has specific styles that complement it best.",
@@ -204,40 +183,30 @@ const FASHION_FAQ: Record<string, string> = {
  */
 export async function generateLocalFashionResponse(
   query: string,
-  hasImage: boolean = false
+  hasImage: boolean = false,
+  priorUserTexts: string[] = []
 ): Promise<TrendResponse> {
   const lowerQuery = query.toLowerCase().trim();
-  const plan = detectIntentHeuristic(query, hasImage);
-  
-  // Check if query is empty or unclear
-  if (!lowerQuery || lowerQuery.length < 3 || lowerQuery === "?") {
-    return {
-      message: "I'm not sure I understood your question. Could you please provide more details about what fashion advice you're looking for?"
-    };
+  const smallTalk = trySmallTalkReply(query);
+  if (smallTalk) {
+    return { message: smallTalk };
   }
-  
-  // Check for small talk patterns
-  if (lowerQuery.match(/^(hi|hello|hey|greetings)/i)) {
-    return { message: SMALL_TALK_RESPONSES.greeting[Math.floor(Math.random() * SMALL_TALK_RESPONSES.greeting.length)] };
-  }
-  
-  if (lowerQuery.match(/^(thanks|thank you|thx)/i)) {
-    return { message: SMALL_TALK_RESPONSES.thanks[Math.floor(Math.random() * SMALL_TALK_RESPONSES.thanks.length)] };
-  }
-  
-  if (lowerQuery.match(/^(bye|goodbye|see you|farewell)/i)) {
-    return { message: SMALL_TALK_RESPONSES.goodbye[Math.floor(Math.random() * SMALL_TALK_RESPONSES.goodbye.length)] };
-  }
-  
-  if (lowerQuery.match(/how are you|how('s| is) it going|what('s| is) up/i)) {
-    return { message: SMALL_TALK_RESPONSES.how_are_you[Math.floor(Math.random() * SMALL_TALK_RESPONSES.how_are_you.length)] };
-  }
+  const plan = buildRetrievalPlan(query, hasImage, priorUserTexts);
   
   // Check for common fashion FAQ
   for (const [question, answer] of Object.entries(FASHION_FAQ)) {
     if (lowerQuery.includes(question.toLowerCase())) {
       return { message: answer };
     }
+  }
+
+  if (plan.needsFollowUp) {
+    const garment =
+      plan.anchorGarment === "unknown" ? "pieces" : `${plan.anchorGarment}s`;
+    return {
+      message: `I can pull ${garment}. Are you shopping for men or women, and is this more casual, office, or party?`,
+      intent: plan.intent,
+    };
   }
   
   // Define fashion-related terms for better query categorization
@@ -263,7 +232,7 @@ export async function generateLocalFashionResponse(
   
   if (!containsFashionTerms && nonFashionTopics.some(topic => lowerQuery.includes(topic))) {
     return { 
-      message: "I'm a fashion assistant and can't provide advice on this topic. I'd be happy to help with style tips, outfit recommendations, or fashion trends instead!" 
+      message: `I'm a fashion mentor, so I skip that topic — but I can help with outfits, colors, or pieces to browse.${HELP_TAIL}`, 
     };
   }
   
@@ -296,17 +265,32 @@ export async function generateLocalFashionResponse(
   };
 
   const catalogOutfits = async () => {
-    const { outfits } = await resolveOutfitSuggestions(plan, 4, searchDeepFashion);
+    const { outfits } = await resolveOutfitSuggestions(
+      plan,
+      4,
+      searchDeepFashionDetailed
+    );
     if (outfits.length > 0) return outfits;
+    // Focused intents: empty is better than Unsplash filler (M3.5).
+    if (plan.intent !== "general") return [];
     return getOutfitRecommendations(outfitType).map((o) => ({
       ...o,
       source: "sample" as const,
     }));
   };
+
+  if (plan.intent === "browse") {
+    response.outfits = await catalogOutfits();
+    const vibe = plan.styleTags.length
+      ? ` (${plan.styleTags.join(", ")})`
+      : "";
+    response.message = `Here are ${plan.anchorGarment} options${vibe}:`;
+    return response;
+  }
   
   if (plan.intent === 'color' || isColorQuery) {
-    response.colors = getSeasonalColors(season);
-    response.message += ` The trending colors for ${season} include ${response.colors.map((c: FashionColor) => c.name).join(', ')}.`;
+    const palette = getSeasonalColors(season);
+    response.message += ` Palette idea: ${palette.map((c: FashionColor) => c.name).join(', ')}.`;
     response.outfits = await catalogOutfits();
   }
   
@@ -322,8 +306,11 @@ export async function generateLocalFashionResponse(
   
   if (plan.intent === 'style') {
     response.outfits = await catalogOutfits();
-    response.colors = getSeasonalColors(season);
-    response.message += ` Style direction (${plan.styleTags.join(', ') || outfitType}):`;
+    const palette = getSeasonalColors(season);
+    response.message += ` Style direction (${plan.styleTags.join(', ') || outfitType}). Colors that work: ${palette
+      .slice(0, 3)
+      .map((c: FashionColor) => c.name)
+      .join(', ')}.`;
   }
 
   if (isAccessoryQuery) {
@@ -332,16 +319,17 @@ export async function generateLocalFashionResponse(
   }
   
     // If no specific query type identified, try to give general fashion advice
-    if (!response.outfits && !response.colors && !isAccessoryQuery) {
+    if (!response.outfits && !isAccessoryQuery) {
       // For "trend" related queries without specific color mentions
       if (lowerQuery.includes('trend') || lowerQuery.includes('popular') || lowerQuery.includes('recommendation') || plan.intent === 'general') {
-        response.colors = getSeasonalColors(season);
         response.outfits = await catalogOutfits();
         response.accessories = getAccessoryRecommendations().slice(0, 3);
         
+        const outfitNames = (response.outfits || []).map((o: FashionOutfit) => o.name).join(', ') || "none matched yet";
+        const palette = getSeasonalColors(season);
         response.message = `Here are the trending fashion items for ${season}: 
-        - Colors: ${response.colors.map((c: FashionColor) => c.name).join(', ')}
-        - Outfits: ${response.outfits.map((o: FashionOutfit) => o.name).join(', ')}
+        - Colors: ${palette.map((c: FashionColor) => c.name).join(', ')}
+        - Outfits: ${outfitNames}
         - Accessories: ${response.accessories.map((a: FashionAccessory) => a.name).join(', ')}`;
         
         return response;
@@ -352,13 +340,19 @@ export async function generateLocalFashionResponse(
       
       // Always provide some fashion advice for queries that seem remotely fashion-related
       if (isFashionRelated || lowerQuery.length > 5) {
-        response.colors = getSeasonalColors(season);
+        const palette = getSeasonalColors(season);
         response.outfits = await catalogOutfits();
         response.accessories = getAccessoryRecommendations().slice(0, 2);
-        response.message = `Here's a fashion suggestion for you: Try wearing colors like ${response.colors.slice(0, 2).map((c: FashionColor) => c.name).join(' or ')} with ${response.outfits[0].description.toLowerCase()}. Add ${response.accessories[0].name.toLowerCase()} to complete the look.`;
+        const firstLook = response.outfits[0];
+        const firstAcc = response.accessories[0];
+        response.message = firstLook
+          ? `Here's a fashion suggestion for you: Try wearing colors like ${palette.slice(0, 2).map((c: FashionColor) => c.name).join(' or ')} with ${firstLook.description.toLowerCase()}.${firstAcc ? ` Add ${firstAcc.name.toLowerCase()} to complete the look.` : ""}`
+          : `Here's a fashion suggestion for you: Try wearing colors like ${palette.slice(0, 2).map((c: FashionColor) => c.name).join(' or ')}.`;
       } else {
         // If we can't determine if it's fashion related, give a prompt to clarify
-        response.message = "I'm not sure I understand your fashion question. Could you ask about specific trends, outfit recommendations, color palettes, or styling advice?";
+        response.message =
+          trySmallTalkReply("?") ||
+          `I'm here for style questions — outfits, colors, or pieces to browse.${HELP_TAIL}`;
       }
     }
   

@@ -10,6 +10,8 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "catalog:ingest": "tsx server/scripts/ingestCatalog.ts",
+    "eval:retrieval": "tsx server/scripts/evalRetrieval.ts",
+    "eval:chat": "tsx server/scripts/evalChat.ts",
     "docker:db": "docker compose up -d postgres",
     "docker:down": "docker compose --profile full --profile vto down",
     "docker:full": "docker compose --profile full up --build",

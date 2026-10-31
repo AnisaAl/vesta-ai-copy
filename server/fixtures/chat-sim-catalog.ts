@@ -1,0 +1,156 @@
+import type { GarmentCategory, FashionAudience } from "../services/fashionIntent";
+
+/** Tiny in-memory catalog for eval:chat (no Postgres, no Claude). */
+export interface MockSimItem {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  category: GarmentCategory;
+  audience: FashionAudience;
+  colors: string[];
+  styleTags: string[];
+}
+
+export const MOCK_CHAT_CATALOG: MockSimItem[] = [
+  {
+    id: "mock-dress-1",
+    name: "Party dress",
+    description: "A navy party dress",
+    imageUrl: "/mock/WOMEN-Dresses-party.jpg",
+    category: "dress",
+    audience: "feminine",
+    colors: ["navy"],
+    styleTags: ["party"],
+  },
+  {
+    id: "mock-dress-2",
+    name: "Day dress",
+    description: "A cream day dress",
+    imageUrl: "/mock/WOMEN-Dresses-day.jpg",
+    category: "dress",
+    audience: "feminine",
+    colors: ["cream"],
+    styleTags: ["casual"],
+  },
+  {
+    id: "mock-dress-3",
+    name: "Wrap dress",
+    description: "A black wrap dress",
+    imageUrl: "/mock/WOMEN-Dresses-wrap.jpg",
+    category: "dress",
+    audience: "feminine",
+    colors: ["black"],
+    styleTags: ["office"],
+  },
+  {
+    id: "mock-dress-4",
+    name: "Knit dress",
+    description: "A grey knit dress",
+    imageUrl: "/mock/WOMEN-Dresses-knit.jpg",
+    category: "dress",
+    audience: "feminine",
+    colors: ["grey"],
+    styleTags: ["casual"],
+  },
+  {
+    id: "mock-blazer-w",
+    name: "Women's blazer",
+    description: "A tailored office blazer",
+    imageUrl: "/mock/WOMEN-Jackets_Coats-blazer.jpg",
+    category: "outerwear",
+    audience: "feminine",
+    colors: ["navy"],
+    styleTags: ["office", "casual"],
+  },
+  {
+    id: "mock-blazer-m",
+    name: "Men's blazer",
+    description: "A navy men's blazer",
+    imageUrl: "/mock/MEN-Jackets_Vests-blazer.jpg",
+    category: "outerwear",
+    audience: "masculine",
+    colors: ["navy"],
+    styleTags: ["office"],
+  },
+  {
+    id: "mock-coat-w",
+    name: "Women's coat",
+    description: "A camel coat",
+    imageUrl: "/mock/WOMEN-Jackets_Coats-coat.jpg",
+    category: "outerwear",
+    audience: "feminine",
+    colors: ["camel"],
+    styleTags: ["casual"],
+  },
+  {
+    id: "mock-jacket-m",
+    name: "Men's jacket",
+    description: "A casual men's jacket",
+    imageUrl: "/mock/MEN-Jackets_Vests-jacket.jpg",
+    category: "outerwear",
+    audience: "masculine",
+    colors: ["black"],
+    styleTags: ["casual"],
+  },
+  {
+    id: "mock-tee-w",
+    name: "Women's tee",
+    description: "A white cotton tee",
+    imageUrl: "/mock/WOMEN-Tees_Tanks-tee.jpg",
+    category: "top",
+    audience: "feminine",
+    colors: ["white"],
+    styleTags: ["casual"],
+  },
+  {
+    id: "mock-tee-m",
+    name: "Men's tee",
+    description: "A grey men's tee",
+    imageUrl: "/mock/MEN-Tees_Tanks-tee.jpg",
+    category: "top",
+    audience: "masculine",
+    colors: ["grey"],
+    styleTags: ["casual"],
+  },
+  {
+    id: "mock-jeans-w",
+    name: "Women's jeans",
+    description: "High-rise jeans",
+    imageUrl: "/mock/WOMEN-Denim-jeans.jpg",
+    category: "bottom",
+    audience: "feminine",
+    colors: ["navy", "denim"],
+    styleTags: ["casual"],
+  },
+  {
+    id: "mock-pants-m",
+    name: "Men's trousers",
+    description: "Office trousers",
+    imageUrl: "/mock/MEN-Pants-trousers.jpg",
+    category: "bottom",
+    audience: "masculine",
+    colors: ["grey"],
+    styleTags: ["office"],
+  },
+  {
+    id: "mock-sneakers",
+    name: "White sneakers",
+    description: "Casual sneakers",
+    imageUrl: "/mock/WOMEN-shoes-sneakers.jpg",
+    category: "shoes",
+    audience: "any",
+    colors: ["white"],
+    styleTags: ["casual"],
+  },
+  {
+    id: "mock-bag",
+    name: "Tote bag",
+    description: "A leather tote",
+    imageUrl: "/mock/WOMEN-bags-tote.jpg",
+    category: "bag",
+    audience: "feminine",
+    colors: ["brown"],
+    styleTags: ["casual"],
+  },
+];

@@ -273,6 +273,180 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * Cart — staging only. Vesta never takes payment; checkout is handed off to
+   * the merchant via the affiliate link (see GET /api/go/:productId).
+   * Ownership always comes from the session cookie, never from the request body.
+   */
+  async function cartPayload(sessionId: string) {
+    const cart = await storage.getOrCreateCart(sessionId);
+    const lines = await storage.getCartLines(cart.id);
+
+    const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+    const priced = lines.filter((line) => typeof line.product.priceCents === 'number');
+    const subtotalCents = priced.reduce(
+      (sum, line) => sum + (line.product.priceCents as number) * line.quantity,
+      0
+    );
+    const currency = priced[0]?.product.currency || 'USD';
+
+    // Affiliate carts span merchants, so checkout is per merchant
+    const merchants = new Map<string, typeof lines>();
+    for (const line of lines) {
+      const key = line.product.merchant;
+      if (!merchants.has(key)) merchants.set(key, []);
+      merchants.get(key)!.push(line);
+    }
+
+    return {
+      itemCount,
+      subtotalCents,
+      currency,
+      hasUnpricedItems: priced.length !== lines.length,
+      merchants: Array.from(merchants.entries()).map(([merchant, items]) => ({
+        merchant,
+        items: items.map((line) => ({
+          itemId: line.itemId,
+          quantity: line.quantity,
+          productId: line.product.id,
+          title: line.product.title,
+          imageUrl: line.product.imageUrl,
+          priceCents: line.product.priceCents,
+          currency: line.product.currency,
+          isActive: line.product.isActive,
+          checkoutUrl: `/api/go/${line.product.id}?source=cart`,
+        })),
+      })),
+    };
+  }
+
+  app.get('/api/cart', async (req, res) => {
+    try {
+      return res.json({ success: true, cart: await cartPayload(req.sessionId) });
+    } catch (error) {
+      console.error('Error loading cart:', error);
+      return res.status(500).json({ message: 'Error loading cart' });
+    }
+  });
+
+  app.post('/api/cart/items', async (req, res) => {
+    try {
+      const body = z
+        .object({
+          productId: z.number().int().positive(),
+          quantity: z.number().int().min(1).max(20).optional(),
+        })
+        .parse(req.body);
+
+      const product = await storage.getProductById(body.productId);
+      if (!product || !product.isActive) {
+        return res.status(404).json({ message: 'Product not available' });
+      }
+
+      const cart = await storage.getOrCreateCart(req.sessionId);
+      await storage.addCartItem(cart.id, product.id, body.quantity ?? 1);
+
+      return res.json({ success: true, cart: await cartPayload(req.sessionId) });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: 'Invalid cart item', errors: error.errors });
+      }
+      console.error('Error adding cart item:', error);
+      return res.status(500).json({ message: 'Error adding cart item' });
+    }
+  });
+
+  app.patch('/api/cart/items/:itemId', async (req, res) => {
+    try {
+      const itemId = parseInt(req.params.itemId, 10);
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: 'Invalid item id' });
+      }
+
+      const body = z.object({ quantity: z.number().int().min(0).max(20) }).parse(req.body);
+      const cart = await storage.getOrCreateCart(req.sessionId);
+
+      const changed =
+        body.quantity === 0
+          ? await storage.removeCartItem(cart.id, itemId)
+          : await storage.setCartItemQuantity(cart.id, itemId, body.quantity);
+
+      if (!changed) {
+        return res.status(404).json({ message: 'Cart item not found' });
+      }
+
+      return res.json({ success: true, cart: await cartPayload(req.sessionId) });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: 'Invalid quantity', errors: error.errors });
+      }
+      console.error('Error updating cart item:', error);
+      return res.status(500).json({ message: 'Error updating cart item' });
+    }
+  });
+
+  app.delete('/api/cart/items/:itemId', async (req, res) => {
+    try {
+      const itemId = parseInt(req.params.itemId, 10);
+      if (isNaN(itemId)) {
+        return res.status(400).json({ message: 'Invalid item id' });
+      }
+
+      const cart = await storage.getOrCreateCart(req.sessionId);
+      const removed = await storage.removeCartItem(cart.id, itemId);
+      if (!removed) {
+        return res.status(404).json({ message: 'Cart item not found' });
+      }
+
+      return res.json({ success: true, cart: await cartPayload(req.sessionId) });
+    } catch (error) {
+      console.error('Error removing cart item:', error);
+      return res.status(500).json({ message: 'Error removing cart item' });
+    }
+  });
+
+  app.delete('/api/cart', async (req, res) => {
+    try {
+      const cart = await storage.getOrCreateCart(req.sessionId);
+      await storage.clearCart(cart.id);
+      return res.json({ success: true, cart: await cartPayload(req.sessionId) });
+    } catch (error) {
+      console.error('Error clearing cart:', error);
+      return res.status(500).json({ message: 'Error clearing cart' });
+    }
+  });
+
+  /**
+   * Outbound affiliate handoff. Records the click first-party (needed to
+   * reconcile network reports) then redirects to the merchant.
+   */
+  app.get('/api/go/:productId', async (req, res) => {
+    try {
+      const productId = parseInt(req.params.productId, 10);
+      if (isNaN(productId)) {
+        return res.status(400).json({ message: 'Invalid product id' });
+      }
+
+      const product = await storage.getProductById(productId);
+      if (!product) {
+        return res.status(404).json({ message: 'Product not found' });
+      }
+
+      const source = typeof req.query.source === 'string' ? req.query.source : 'unknown';
+      try {
+        await storage.logProductClick(product.id, req.sessionId, source);
+      } catch (logError) {
+        // Never block the handoff on analytics
+        console.error('Error logging product click:', logError);
+      }
+
+      return res.redirect(302, product.affiliateUrl);
+    } catch (error) {
+      console.error('Error handling affiliate redirect:', error);
+      return res.status(500).json({ message: 'Error handling affiliate redirect' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

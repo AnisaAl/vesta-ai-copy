@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useCart } from '@/hooks/useCart';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -21,6 +22,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [location] = useLocation();
   const isMobile = useIsMobile();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const { cart } = useCart();
 
   const toggleMobileMenu = () => setMobileMenuOpen(!mobileMenuOpen);
 
@@ -48,9 +50,9 @@ export function MainLayout({ children }: MainLayoutProps) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* Main navigation header */}
-      <header className="bg-background border-b sticky top-0 z-50">
+      <header className="bg-background border-b shrink-0 z-50">
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center">
             <Link href="/">
@@ -79,17 +81,38 @@ export function MainLayout({ children }: MainLayoutProps) {
             </nav>
           )}
           
-          {/* Mobile menu button */}
-          {isMobile && (
-            <Button 
-              variant="ghost" 
-              size="icon"
-              onClick={toggleMobileMenu}
-              aria-label="Toggle menu"
-            >
-              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            <Link href="/cart">
+              <span
+                className={cn(
+                  "relative px-3 py-2 rounded-md text-sm font-medium flex items-center cursor-pointer",
+                  location === '/cart'
+                    ? "bg-primary/10 text-primary"
+                    : "text-foreground/70 hover:bg-muted hover:text-foreground"
+                )}
+                aria-label={`Bag, ${cart.itemCount} ${cart.itemCount === 1 ? 'item' : 'items'}`}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                {cart.itemCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-primary text-primary-foreground text-[10px] leading-none rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                    {cart.itemCount}
+                  </span>
+                )}
+              </span>
+            </Link>
+
+            {/* Mobile menu button */}
+            {isMobile && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleMobileMenu}
+                aria-label="Toggle menu"
+              >
+                {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </Button>
+            )}
+          </div>
         </div>
         
         {/* Mobile Navigation */}
@@ -118,12 +141,12 @@ export function MainLayout({ children }: MainLayoutProps) {
       </header>
       
       {/* Main content */}
-      <main className="flex-1 bg-background">
+      <main className="flex-1 min-h-0 overflow-y-auto bg-background">
         {children}
       </main>
       
       {/* Footer */}
-      <footer className="bg-background border-t py-6">
+      <footer className="bg-background border-t py-6 shrink-0">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>© 2025 Vesta AI Companion. All rights reserved.</p>
         </div>

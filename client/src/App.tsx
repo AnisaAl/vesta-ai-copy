@@ -7,6 +7,7 @@ import Home from "@/pages/Home";
 import Profile from "@/pages/Profile";
 import Trends from "@/pages/Trends";
 import { Wardrobe } from "@/pages/Wardrobe";
+import Cart from "@/pages/Cart";
 import { MainLayout } from "@/components/layout/MainLayout";
 
 function Router() {
@@ -17,6 +18,7 @@ function Router() {
         <Route path="/profile" component={Profile} />
         <Route path="/wardrobe" component={Wardrobe} />
         <Route path="/trends" component={Trends} />
+        <Route path="/cart" component={Cart} />
         <Route component={NotFound} />
       </Switch>
     </MainLayout>

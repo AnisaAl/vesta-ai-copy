@@ -1,6 +1,5 @@
 import React from 'react';
 import { Message } from '@/lib/types';
-import TrendCarousel from '../fashion/TrendCarousel';
 import OutfitGrid from '../fashion/OutfitGrid';
 import AccessoryList from '../fashion/AccessoryList';
 
@@ -16,21 +15,17 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
       if (jsonMatch && jsonMatch[1]) {
         const jsonData = JSON.parse(jsonMatch[1].trim());
         const textContent = message.content.replace(/```json[\s\S]*?```/, '').trim();
-        const hasColors = Array.isArray(jsonData.colors) && jsonData.colors.length > 0;
         const hasOutfits = Array.isArray(jsonData.outfits) && jsonData.outfits.length > 0;
         const hasAccessories = Array.isArray(jsonData.accessories) && jsonData.accessories.length > 0;
 
-        if (hasColors || hasOutfits || hasAccessories) {
-          return (
-            <>
-              {textContent && <p className="text-sm mb-3">{textContent}</p>}
-              {hasColors && <TrendCarousel colors={jsonData.colors} />}
-              {hasOutfits && <OutfitGrid outfits={jsonData.outfits} />}
-              {hasAccessories && <AccessoryList accessories={jsonData.accessories} />}
-              {jsonData.conclusion && <p className="text-sm mt-3">{jsonData.conclusion}</p>}
-            </>
-          );
-        }
+        return (
+          <>
+            {textContent && <p className="text-sm mb-3">{textContent}</p>}
+            {hasOutfits && <OutfitGrid outfits={jsonData.outfits} />}
+            {hasAccessories && <AccessoryList accessories={jsonData.accessories} />}
+            {jsonData.conclusion && <p className="text-sm mt-3">{jsonData.conclusion}</p>}
+          </>
+        );
       }
 
       return <p className="text-sm">{message.content}</p>;

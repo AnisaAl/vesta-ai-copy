@@ -6,9 +6,9 @@ import {
   GarmentCategory,
   GenderPresentation,
   categoryKeywords,
-  detectAnchorCategory,
   inferGenderPresentation,
   itemMatchesAudience,
+  buildRetrievalPlan,
 } from "./fashionIntent";
 
 interface DeepFashionItem {
@@ -74,6 +74,32 @@ function wordHit(haystack: string, word: string): boolean {
   return new RegExp(`(?:^|[^a-z])${escaped}(?:[^a-z]|$)`, "i").test(haystack);
 }
 
+const DF_FOLDER_CATEGORY: Record<string, GarmentCategory> = {
+  dresses: "dress",
+  rompers_jumpsuits: "dress",
+  tees_tanks: "top",
+  graphic_tees: "top",
+  blouses_shirts: "top",
+  shirts_polos: "top",
+  sweaters: "top",
+  cardigans: "top",
+  sweatshirts_hoodies: "top",
+  jackets_coats: "outerwear",
+  jackets_vests: "outerwear",
+  suiting: "outerwear",
+  pants: "bottom",
+  shorts: "bottom",
+  skirts: "bottom",
+  denim: "bottom",
+  leggings: "bottom",
+};
+
+function categoryFromFileName(fileName: string): GarmentCategory | null {
+  const match = fileName.match(/^(?:MEN|WOMEN)-([^-]+)-/i);
+  if (!match) return null;
+  return DF_FOLDER_CATEGORY[match[1].toLowerCase()] || null;
+}
+
 function inferCategories(haystack: string): GarmentCategory[] {
   const cats: GarmentCategory[] = [];
   const order: GarmentCategory[] = [
@@ -103,7 +129,7 @@ function inferPrimaryCategory(haystack: string, cats: GarmentCategory[]): Garmen
   // Full-body shots often mention shirt + trousers. Prefer the garment that
   // matches exclusive keywords first; if both top+bottom, prefer bottom only
   // when trousers/skirt/jeans are present AND no stronger dress.
-  if (hasDress && wordHit(haystack, "dress")) return "dress";
+  if (hasDress) return "dress";
   if (cats.includes("outerwear") && (wordHit(haystack, "jacket") || wordHit(haystack, "coat") || wordHit(haystack, "blazer"))) {
     return "outerwear";
   }
@@ -159,8 +185,13 @@ function loadDeepFashionData(): DeepFashionItem[] {
       }
 
       const haystack = `${caption} ${fileName}`.toLowerCase();
+      const fileCat = categoryFromFileName(fileName);
       const categories = inferCategories(haystack);
-      const primaryCategory = inferPrimaryCategory(haystack, categories);
+      if (fileCat && !categories.includes(fileCat)) {
+        categories.unshift(fileCat);
+      }
+      const primaryCategory =
+        fileCat || inferPrimaryCategory(haystack, categories);
       const colors = COLOR_WORDS.filter((c) => haystack.includes(c));
       const styleTags = STYLE_WORDS.filter((s) => haystack.includes(s));
       const genderPresentation = inferGenderPresentation(fileName, caption);
@@ -205,6 +236,7 @@ function itemToOutfit(item: DeepFashionItem): FashionOutfit {
     name: labels[item.primaryCategory] || "Outfit",
     description: item.caption,
     imageUrl: item.imageUrl,
+    source: "deepfashion",
   };
 }
 
@@ -229,7 +261,6 @@ function scoreItem(item: DeepFashionItem, plan: FashionQueryPlan): number {
 
   if (plan.intent === "combine") {
     const targets = plan.targetCategories;
-    // Strict: primary garment must be a complementary category
     if (!targets.includes(item.primaryCategory)) return -1;
     score += 8;
     if (item.primaryCategory === "bottom") score += 2;
@@ -242,8 +273,11 @@ function scoreItem(item: DeepFashionItem, plan: FashionQueryPlan): number {
     } else {
       return -1;
     }
+  } else if (plan.intent === "browse") {
+    const want = plan.targetCategories[0] || plan.anchorGarment;
+    if (want === "unknown" || item.primaryCategory !== want) return -1;
+    score += 8;
   } else if (plan.intent === "color") {
-    // Captions rarely name colors; if no color hits, fall through to random later
     for (const c of plan.colors) {
       if (item.colors.includes(c) || wordHit(haystack, c)) score += 5;
     }
@@ -252,7 +286,6 @@ function scoreItem(item: DeepFashionItem, plan: FashionQueryPlan): number {
     for (const s of plan.styleTags) {
       if (item.styleTags.includes(s) || wordHit(haystack, s)) score += 4;
     }
-    // Light boost for formal/business synonyms in caption
     if (plan.styleTags.some((t) => ["office", "formal", "business", "minimal"].includes(t))) {
       if (wordHit(haystack, "blazer") || wordHit(haystack, "trousers") || wordHit(haystack, "shirt")) {
         score += 2;
@@ -260,6 +293,7 @@ function scoreItem(item: DeepFashionItem, plan: FashionQueryPlan): number {
     }
     if (score === 0) return -1;
   } else {
+    // general: weak base; color/style boosts below
     score += 1;
   }
 
@@ -277,16 +311,27 @@ function scoreItem(item: DeepFashionItem, plan: FashionQueryPlan): number {
   return score;
 }
 
+export type MatchQuality = "strict" | "broadened" | "empty";
+
+export interface DeepFashionSearchResult {
+  outfits: FashionOutfit[];
+  match: MatchQuality;
+  categories: GarmentCategory[];
+}
+
 /**
  * Intent-aware DeepFashion retrieval.
- * Empty strict filters → one broaden pass (drop color/style) → random last resort.
+ * Focused intents never fall back to random fills (M3.5).
+ * One broaden pass only: drop color/style boosts while keeping category rules.
  */
-export function searchDeepFashion(
+export function searchDeepFashionDetailed(
   plan: FashionQueryPlan,
   limit: number = 4
-): FashionOutfit[] {
+): DeepFashionSearchResult {
   const allItems = loadDeepFashionData();
-  if (allItems.length === 0) return [];
+  if (allItems.length === 0) {
+    return { outfits: [], match: "empty", categories: [] };
+  }
 
   const rank = (p: FashionQueryPlan) => {
     const scored = allItems
@@ -297,9 +342,46 @@ export function searchDeepFashion(
   };
 
   let selected = rank(plan);
+  let match: MatchQuality = selected.length > 0 ? "strict" : "empty";
 
-  if (selected.length === 0 && (plan.colors.length > 0 || plan.styleTags.length > 0)) {
-    selected = rank({ ...plan, colors: [], styleTags: [] });
+  if (
+    selected.length === 0 &&
+    (plan.colors.length > 0 || plan.styleTags.length > 0) &&
+    (plan.intent === "combine" ||
+      plan.intent === "similar" ||
+      plan.intent === "style" ||
+      plan.intent === "color")
+  ) {
+    // Keep category / color primary rules; only drop secondary boosts for combine/similar.
+    // For color: no broaden (empty is better than random).
+    // For style: one pass without requiring exact style tag — use formal/office caption cues via empty styleTags + general? No — that becomes random.
+    // Style broaden: keep intent style but allow score via formal synonyms by using styleTags cleared and intent general with audience only — too loose.
+    // Style: broaden by dropping styleTags but requiring at least one of blazer/trousers/shirt in haystack via a soft plan
+    if (plan.intent === "color") {
+      // no broaden — empty beats random color-mismatched looks
+    } else if (plan.intent === "style") {
+      const officeish = allItems
+        .filter((item) =>
+          itemMatchesAudience(item.genderPresentation, plan.audience || "any")
+        )
+        .filter((item) => {
+          const h = `${item.caption} ${item.fileName}`.toLowerCase();
+          return (
+            wordHit(h, "blazer") ||
+            wordHit(h, "trousers") ||
+            wordHit(h, "suit") ||
+            item.styleTags.some((t) =>
+              ["office", "formal", "business", "minimal", "elegant"].includes(t)
+            )
+          );
+        })
+        .slice(0, limit);
+      selected = officeish;
+      if (selected.length > 0) match = "broadened";
+    } else {
+      selected = rank({ ...plan, colors: [], styleTags: [] });
+      if (selected.length > 0) match = "broadened";
+    }
   }
 
   if (selected.length === 0 && plan.intent === "combine") {
@@ -311,41 +393,54 @@ export function searchDeepFashion(
       colors: [],
       styleTags: [],
     });
+    if (selected.length > 0) match = "broadened";
   }
 
-  // color/style with no caption hits → diverse random (Analyst: sparse color tokens)
-  if (
-    selected.length === 0 &&
-    (plan.intent === "color" || plan.intent === "style" || plan.intent === "general")
-  ) {
+  if (plan.intent === "browse" && selected.length < limit) {
+    const extra = rank({ ...plan, colors: [], styleTags: [] });
+    const seen = new Set(selected.map((item) => item.id));
+    for (const item of extra) {
+      if (selected.length >= limit) break;
+      if (!seen.has(item.id)) {
+        selected.push(item);
+        seen.add(item.id);
+        if (plan.styleTags.length > 0 || plan.colors.length > 0) {
+          match = "broadened";
+        }
+      }
+    }
+  }
+
+  // general only: audience-scoped sample when nothing ranked
+  if (selected.length === 0 && plan.intent === "general") {
     selected = getRandomDeepFashionItems(limit, plan.audience || "any");
+    if (selected.length > 0) match = "broadened";
   }
 
   if (selected.length === 0) {
-    selected = getRandomDeepFashionItems(limit, plan.audience || "any");
+    return { outfits: [], match: "empty", categories: [] };
   }
 
-  return selected.map(itemToOutfit);
+  return {
+    outfits: selected.map(itemToOutfit),
+    match,
+    categories: selected.map((i) => i.primaryCategory),
+  };
 }
 
-/** @deprecated Prefer searchDeepFashion with a FashionQueryPlan */
+export function searchDeepFashion(
+  plan: FashionQueryPlan,
+  limit: number = 4
+): FashionOutfit[] {
+  return searchDeepFashionDetailed(plan, limit).outfits;
+}
+
+/** @deprecated Chat uses searchDeepFashionDetailed; kept for GET /api/recommendations. */
 export function getDeepFashionOutfits(
   query: string,
   limit: number = 4
 ): FashionOutfit[] {
-  const anchor = detectAnchorCategory(query);
-  return searchDeepFashion(
-    {
-      intent: "general",
-      audience: "any",
-      anchorGarment: anchor,
-      targetCategories: [],
-      colors: [],
-      styleTags: query.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6),
-      rationale: "legacy getDeepFashionOutfits",
-    },
-    limit
-  );
+  return searchDeepFashion(buildRetrievalPlan(query, false), limit);
 }
 
 export function getDeepFashionRecommendations(

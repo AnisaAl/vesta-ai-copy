@@ -7,6 +7,7 @@
 export type FashionIntent =
   | "combine"
   | "similar"
+  | "browse"
   | "color"
   | "style"
   | "general";
@@ -34,14 +35,19 @@ export interface FashionQueryPlan {
   targetCategories: GarmentCategory[];
   colors: string[];
   styleTags: string[];
+  /** Ask before injecting cards (ambiguous audience/occasion). */
+  needsFollowUp?: boolean;
   /** Short reason for debugging / logs */
   rationale?: string;
 }
 
 const SIMILAR_CUES =
-  /\b(similar| alike|like this|same style|more like|look.?alike|matching shirt|another tee|duplicates?)\b/i;
+  /\b(similar|alike|like this|same style|more like|look.?alike|matching shirt|another tee|duplicates?)\b/i;
 const COMBINE_CUES =
   /\b(combin|pair with|go with|match with|what (?:pants|skirt|bottom|shoe|bag)|outfit with|wear with|complete (?:the )?look|styl(?:e|ing) this)\b/i;
+/** Combine without the ambiguous “go with” / “match with” (those also appear in color asks). */
+const STRONG_COMBINE_CUES =
+  /\b(combin|pair with|what (?:pants|skirt|bottom|shoe|bag)|outfit with|wear with|complete (?:the )?look|styl(?:e|ing) this)\b/i;
 const COLOR_CUES =
   /\b(color|colour|palette|navy|beige|pastel|monochrome|what colors?|colour.?match)\b/i;
 const STYLE_CUES =
@@ -50,15 +56,23 @@ const STYLE_CUES =
 const CATEGORY_WORDS: Record<GarmentCategory, string[]> = {
   top: [
     "shirt",
+    "shirts",
     "t-shirt",
     "tshirt",
     "tee",
+    "tees",
     "tank",
+    "tanks",
     "blouse",
+    "blouses",
     "sweater",
+    "sweaters",
     "cardigan",
+    "cardigans",
     "hoodie",
+    "hoodies",
     "top",
+    "tops",
     "pullover",
     "camisole",
   ],
@@ -68,12 +82,14 @@ const CATEGORY_WORDS: Record<GarmentCategory, string[]> = {
     "jeans",
     "shorts",
     "skirt",
+    "skirts",
     "leggings",
     "chino",
+    "chinos",
   ],
-  dress: ["dress", "gown", "romper", "jumpsuit"],
-  shoes: ["shoe", "sneaker", "boot", "sandal", "heel", "loafer", "footwear"],
-  bag: ["bag", "handbag", "purse", "backpack", "tote"],
+  dress: ["dress", "dresses", "gown", "gowns", "romper", "rompers", "jumpsuit", "jumpsuits"],
+  shoes: ["shoe", "shoes", "sneaker", "sneakers", "boot", "boots", "sandal", "sandals", "heel", "heels", "loafer", "loafers", "footwear"],
+  bag: ["bag", "bags", "handbag", "handbags", "purse", "purses", "backpack", "tote"],
   accessory: [
     "hat",
     "scarf",
@@ -85,7 +101,7 @@ const CATEGORY_WORDS: Record<GarmentCategory, string[]> = {
     "sunglasses",
     "accessory",
   ],
-  outerwear: ["jacket", "coat", "blazer", "parka", "vest", "windbreaker"],
+  outerwear: ["jacket", "jackets", "coat", "coats", "blazer", "blazers", "parka", "vest", "vests", "windbreaker"],
   unknown: [],
 };
 
@@ -173,6 +189,42 @@ export function extractStyleTags(text: string): string[] {
   return tags.filter((t) => lower.includes(t));
 }
 
+const FEMININE_GARMENT_CUES =
+  /\b(dress|dresses|gown|gowns|skirt|skirts|blouse|blouses|heels?|camisole)\b/i;
+
+const AMBIVALENT_BROWSE: GarmentCategory[] = [
+  "top",
+  "bottom",
+  "outerwear",
+  "shoes",
+  "bag",
+  "accessory",
+];
+
+export function implyAudienceFromGarment(
+  text: string,
+  anchor: GarmentCategory,
+  explicit: FashionAudience
+): FashionAudience {
+  if (explicit !== "any") return explicit;
+  if (anchor === "dress" || FEMININE_GARMENT_CUES.test(text)) return "feminine";
+  return "any";
+}
+
+function needsBrowseFollowUp(plan: FashionQueryPlan, text: string): boolean {
+  if (plan.intent !== "browse") return false;
+  if (plan.anchorGarment === "unknown") return true;
+  const impliedFeminine =
+    plan.audience === "feminine" ||
+    plan.anchorGarment === "dress" ||
+    FEMININE_GARMENT_CUES.test(text);
+  if (impliedFeminine) return false;
+  const ambivalent = AMBIVALENT_BROWSE.includes(plan.anchorGarment);
+  const missingAudience = plan.audience === "any";
+  const missingStyle = plan.styleTags.length === 0;
+  return ambivalent && (missingAudience || missingStyle);
+}
+
 const FEMININE_AUDIENCE =
   /\b(women|woman|female|feminine|lady|ladies|girl|girls|she|her|hers|womens)\b/i;
 const MASCULINE_AUDIENCE =
@@ -255,12 +307,12 @@ export function detectIntentHeuristic(
   const text = userMessage || "";
   const colors = extractColorTerms(text);
   const styleTags = extractStyleTags(text);
-  const audience = detectAudience(text);
+  const explicitAudience = detectAudience(text);
   let anchor = detectAnchorCategory(text);
   if (hasImage && anchor === "unknown") {
-    // Uploads without wording usually are a top/anchor piece
     anchor = "top";
   }
+  const audience = implyAudienceFromGarment(text, anchor, explicitAudience);
 
   let intent: FashionIntent = "general";
   let rationale = "default general";
@@ -269,10 +321,19 @@ export function detectIntentHeuristic(
     intent = "similar";
     rationale = "similar cue in text";
   } else if (COMBINE_CUES.test(text) || (hasImage && !SIMILAR_CUES.test(text))) {
-    intent = "combine";
-    rationale = hasImage && !COMBINE_CUES.test(text)
-      ? "image upload defaults to combine"
-      : "combine cue in text";
+    if (COLOR_CUES.test(text) && !hasImage && !STRONG_COMBINE_CUES.test(text)) {
+      intent = "color";
+      rationale = "color cue without a strong combine ask";
+    } else {
+      intent = "combine";
+      rationale = hasImage && !COMBINE_CUES.test(text)
+        ? "image upload defaults to combine"
+        : "combine cue in text";
+    }
+  } else if (anchor !== "unknown" && !hasImage) {
+    // Named garment wins over party/navy style-or-color words
+    intent = "browse";
+    rationale = "named garment browse";
   } else if (COLOR_CUES.test(text) && !hasImage) {
     intent = "color";
     rationale = "color cue without image";
@@ -295,15 +356,13 @@ export function detectIntentHeuristic(
   let targetCategories: GarmentCategory[] = [];
   if (intent === "combine") {
     targetCategories = COMBINE_TARGETS[anchor] || COMBINE_TARGETS.unknown;
-  } else if (intent === "similar") {
+  } else if (intent === "similar" || intent === "browse") {
     targetCategories = [anchor === "unknown" ? "top" : anchor];
-  } else if (intent === "style" || intent === "general") {
-    targetCategories = [];
-  } else if (intent === "color") {
+  } else if (intent === "style" || intent === "general" || intent === "color") {
     targetCategories = [];
   }
 
-  return {
+  const plan: FashionQueryPlan = {
     intent,
     audience,
     anchorGarment: anchor,
@@ -312,64 +371,78 @@ export function detectIntentHeuristic(
     styleTags,
     rationale,
   };
+  plan.needsFollowUp = needsBrowseFollowUp(plan, text);
+  if (plan.needsFollowUp) {
+    plan.rationale = `${plan.rationale}; needsFollowUp`;
+  }
+  return plan;
 }
 
-/** Merge Claude-provided intent JSON with heuristics (Claude wins on intent if valid). */
-export function mergeIntentFromModel(
-  heuristic: FashionQueryPlan,
+/**
+ * Normalize a plan so retrieval policies are consistent:
+ * combine → complementary targets (never the anchor alone)
+ * similar → same category as anchor
+ */
+export function applyIntentPolicy(plan: FashionQueryPlan): FashionQueryPlan {
+  const next = { ...plan };
+  if (next.intent === "combine") {
+    const targets =
+      COMBINE_TARGETS[next.anchorGarment] || COMBINE_TARGETS.unknown;
+    next.targetCategories = targets.filter((c) => c !== next.anchorGarment);
+    if (next.targetCategories.length === 0) {
+      next.targetCategories = [...targets];
+    }
+    next.rationale = `${next.rationale || ""}; policy=combine`.trim();
+  } else if (next.intent === "similar") {
+    const want =
+      next.anchorGarment === "unknown"
+        ? next.targetCategories[0] || "top"
+        : next.anchorGarment;
+    next.targetCategories = [want];
+    next.anchorGarment = want;
+    next.rationale = `${next.rationale || ""}; policy=similar`.trim();
+  } else if (next.intent === "browse") {
+    const want =
+      next.anchorGarment === "unknown"
+        ? next.targetCategories[0] || "dress"
+        : next.anchorGarment;
+    next.targetCategories = [want];
+    next.anchorGarment = want;
+    next.rationale = `${next.rationale || ""}; policy=browse`.trim();
+  }
+  return next;
+}
+
+/** Heuristic + policy: the plan used for catalog / DeepFashion injection. */
+export function buildRetrievalPlan(
+  userMessage: string,
+  hasImage: boolean,
+  priorUserTexts: string[] = []
+): FashionQueryPlan {
+  const combined = [...priorUserTexts, userMessage].filter(Boolean).join("\n");
+  return applyIntentPolicy(detectIntentHeuristic(combined, hasImage));
+}
+
+/**
+ * Mentor JSON may refine colors/styleTags for display only.
+ * Intent, audience, anchor, and targets stay locked to the retrieval plan.
+ */
+export function mergeMentorHintsForDisplay(
+  retrievalPlan: FashionQueryPlan,
   modelPartial: Partial<FashionQueryPlan> | null | undefined
 ): FashionQueryPlan {
-  if (!modelPartial) return heuristic;
-  const validIntents: FashionIntent[] = [
-    "combine",
-    "similar",
-    "color",
-    "style",
-    "general",
-  ];
-  const validAudiences: FashionAudience[] = ["feminine", "masculine", "any"];
-  const intent =
-    modelPartial.intent && validIntents.includes(modelPartial.intent)
-      ? modelPartial.intent
-      : heuristic.intent;
-
-  const audience =
-    modelPartial.audience && validAudiences.includes(modelPartial.audience)
-      ? modelPartial.audience
-      : heuristic.audience;
-
-  const anchor =
-    modelPartial.anchorGarment && modelPartial.anchorGarment !== "unknown"
-      ? modelPartial.anchorGarment
-      : heuristic.anchorGarment;
-
-  let targetCategories =
-    Array.isArray(modelPartial.targetCategories) &&
-    modelPartial.targetCategories.length > 0
-      ? modelPartial.targetCategories
-      : heuristic.targetCategories;
-
-  if (intent === "combine" && targetCategories.length === 0) {
-    targetCategories = COMBINE_TARGETS[anchor] || COMBINE_TARGETS.unknown;
-  }
-  if (intent === "similar" && targetCategories.length === 0) {
-    targetCategories = [anchor === "unknown" ? "top" : anchor];
-  }
-
+  if (!modelPartial) return retrievalPlan;
   return {
-    intent,
-    audience,
-    anchorGarment: anchor,
-    targetCategories,
+    ...retrievalPlan,
     colors:
       modelPartial.colors && modelPartial.colors.length > 0
         ? modelPartial.colors.map((c) => c.toLowerCase())
-        : heuristic.colors,
+        : retrievalPlan.colors,
     styleTags:
       modelPartial.styleTags && modelPartial.styleTags.length > 0
         ? modelPartial.styleTags.map((t) => t.toLowerCase())
-        : heuristic.styleTags,
-    rationale: modelPartial.rationale || heuristic.rationale,
+        : retrievalPlan.styleTags,
+    rationale: `${retrievalPlan.rationale || ""}; mentor_hints`.trim(),
   };
 }
 

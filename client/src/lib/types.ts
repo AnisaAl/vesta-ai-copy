@@ -23,12 +23,38 @@ export interface FashionOutfit {
   name: string;
   description: string;
   imageUrl: string;
-  /** Present on affiliate catalog rows (shop on merchant — Milestone 3 cart). */
+  /** Present on affiliate catalog rows; enables add-to-cart and merchant handoff. */
+  productId?: number;
   affiliateUrl?: string;
   priceCents?: number;
   currency?: string;
   merchant?: string;
   source?: "affiliate" | "deepfashion" | "sample";
+}
+
+export interface CartItem {
+  itemId: number;
+  productId: number;
+  quantity: number;
+  title: string;
+  imageUrl: string;
+  priceCents: number | null;
+  currency: string;
+  isActive: boolean;
+  checkoutUrl: string;
+}
+
+export interface CartMerchantGroup {
+  merchant: string;
+  items: CartItem[];
+}
+
+export interface Cart {
+  itemCount: number;
+  subtotalCents: number;
+  currency: string;
+  hasUnpricedItems: boolean;
+  merchants: CartMerchantGroup[];
 }
 
 export interface FashionAccessory {

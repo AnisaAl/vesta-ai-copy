@@ -78,6 +78,58 @@ export const insertProductSchema = createInsertSchema(products).omit({
   updatedAt: true,
 });
 
+/**
+ * Staging cart. Keyed by an anonymous session id so it survives refreshes and
+ * restarts before auth exists; `userId` gets filled in when accounts ship.
+ */
+export const carts = pgTable(
+  "carts",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    userId: integer("user_id").references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionIdx: uniqueIndex("carts_session_idx").on(table.sessionId),
+  })
+);
+
+export const cartItems = pgTable(
+  "cart_items",
+  {
+    id: serial("id").primaryKey(),
+    cartId: integer("cart_id")
+      .notNull()
+      .references(() => carts.id, { onDelete: "cascade" }),
+    productId: integer("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").notNull().default(1),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    cartProductIdx: uniqueIndex("cart_items_cart_product_idx").on(
+      table.cartId,
+      table.productId
+    ),
+  })
+);
+
+/** Outbound affiliate clicks — first-party record for reconciling network reports. */
+export const productClicks = pgTable("product_clicks", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "cascade" }),
+  sessionId: text("session_id"),
+  /** where the click came from: chat | cart | catalog */
+  source: text("source").notNull().default("unknown"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Define types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -87,6 +139,17 @@ export type ChatHistory = typeof chatHistories.$inferSelect;
 
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
+
+export type Cart = typeof carts.$inferSelect;
+export type CartItem = typeof cartItems.$inferSelect;
+export type ProductClick = typeof productClicks.$inferSelect;
+
+/** Cart row joined with its product, as returned by the cart API. */
+export interface CartLine {
+  itemId: number;
+  quantity: number;
+  product: Product;
+}
 
 // Message schema for validation
 export const messageSchema = z.object({

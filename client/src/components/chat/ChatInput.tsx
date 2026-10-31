@@ -1,4 +1,4 @@
-import React, { useState, KeyboardEvent, useRef } from 'react';
+import React, { useState, KeyboardEvent, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Send, Image, X } from 'lucide-react';
@@ -12,12 +12,28 @@ export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+
+  const focusPrompt = () => {
+    textInputRef.current?.focus();
+  };
+
+  useEffect(() => {
+    focusPrompt();
+  }, []);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const id = window.requestAnimationFrame(() => focusPrompt());
+    return () => window.cancelAnimationFrame(id);
+  }, [isLoading]);
 
   const handleSend = () => {
     if ((message.trim() || selectedImage) && !isLoading) {
       onSend(message, selectedImage || undefined);
       setMessage('');
       setSelectedImage(null);
+      window.requestAnimationFrame(() => focusPrompt());
     }
   };
 
@@ -52,7 +68,7 @@ export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
   };
 
   return (
-    <div className="border-t border-gray-200 bg-white px-4 py-3 sticky bottom-0 z-10">
+    <div className="border-t border-gray-200 bg-white px-4 py-3 shrink-0 sticky bottom-0 z-10">
       {selectedImage && (
         <div className="mb-2 flex items-center">
           <div className="bg-[#F5F5F5] rounded-md px-2 py-1 flex items-center mr-2">
@@ -71,13 +87,13 @@ export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
       )}
       <div className="relative flex items-center">
         <Input
+          ref={textInputRef}
           type="text"
           placeholder={selectedImage ? "Add a message about this image..." : "Ask about fashion trends, styling tips..."}
           className="w-full rounded-full bg-[#F5F5F5] py-3 px-4 pr-24 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5470]/20"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={isLoading}
         />
         <div className="absolute right-12">
           <input

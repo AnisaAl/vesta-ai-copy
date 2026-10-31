@@ -30,10 +30,10 @@ export default function Home() {
   }, [messages]);
 
   return (
-    <div className="h-screen flex bg-background">
+    <div className="h-full min-h-0 flex overflow-hidden bg-background">
       {/* History sidebar - hidden on mobile by default */}
       {showSidebar && (
-        <div className={`${isMobile ? 'fixed inset-0 z-50 bg-background' : 'w-80'}`}>
+        <div className={`${isMobile ? 'fixed inset-0 z-50 bg-background' : 'w-80 h-full min-h-0 shrink-0'}`}>
           <HistorySidebar 
             onSelectHistory={handleSelectHistory} 
             currentHistoryId={chatHistoryId} 
@@ -52,7 +52,7 @@ export default function Home() {
       )}
       
       {/* Main chat area */}
-      <div className={`flex flex-col flex-1 ${showSidebar && !isMobile ? 'ml-80' : ''}`}>
+      <div className={`flex flex-col flex-1 min-h-0 ${showSidebar && !isMobile ? 'ml-80' : ''}`}>
         <Header 
           onClearChat={clearChat}
           onToggleHistory={() => setShowSidebar(!showSidebar)}

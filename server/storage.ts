@@ -2,6 +2,9 @@ import {
   users,
   chatHistories,
   products,
+  carts,
+  cartItems,
+  productClicks,
   type User,
   type InsertUser,
   type ChatHistory,
@@ -9,6 +12,8 @@ import {
   type Message,
   type Product,
   type InsertProduct,
+  type Cart,
+  type CartLine,
 } from "@shared/schema";
 import { db } from "./db";
 import { and, eq, ilike, or, isNull, sql, SQL } from "drizzle-orm";
@@ -39,6 +44,22 @@ export interface IStorage {
   countProducts(query?: CatalogQuery): Promise<number>;
   getProductById(id: number): Promise<Product | undefined>;
   upsertProduct(product: InsertProduct): Promise<Product>;
+
+  getOrCreateCart(sessionId: string): Promise<Cart>;
+  getCartLines(cartId: number): Promise<CartLine[]>;
+  addCartItem(cartId: number, productId: number, quantity: number): Promise<void>;
+  setCartItemQuantity(
+    cartId: number,
+    itemId: number,
+    quantity: number
+  ): Promise<boolean>;
+  removeCartItem(cartId: number, itemId: number): Promise<boolean>;
+  clearCart(cartId: number): Promise<void>;
+  logProductClick(
+    productId: number,
+    sessionId: string | null,
+    source: string
+  ): Promise<void>;
 }
 
 function buildProductFilters(query: CatalogQuery = {}): SQL[] {
@@ -233,6 +254,113 @@ export class DatabaseStorage implements IStorage {
 
     const [created] = await db.insert(products).values(payload).returning();
     return created;
+  }
+
+  async getOrCreateCart(sessionId: string): Promise<Cart> {
+    const [existing] = await db
+      .select()
+      .from(carts)
+      .where(eq(carts.sessionId, sessionId))
+      .limit(1);
+    if (existing) return existing;
+
+    const [created] = await db
+      .insert(carts)
+      .values({ sessionId })
+      .onConflictDoNothing({ target: carts.sessionId })
+      .returning();
+    if (created) return created;
+
+    // Lost a race with a concurrent request for the same session
+    const [raced] = await db
+      .select()
+      .from(carts)
+      .where(eq(carts.sessionId, sessionId))
+      .limit(1);
+    return raced;
+  }
+
+  async getCartLines(cartId: number): Promise<CartLine[]> {
+    const rows = await db
+      .select({
+        itemId: cartItems.id,
+        quantity: cartItems.quantity,
+        product: products,
+      })
+      .from(cartItems)
+      .innerJoin(products, eq(cartItems.productId, products.id))
+      .where(eq(cartItems.cartId, cartId))
+      .orderBy(cartItems.id);
+
+    return rows.map((row) => ({
+      itemId: row.itemId,
+      quantity: row.quantity,
+      product: row.product,
+    }));
+  }
+
+  async addCartItem(
+    cartId: number,
+    productId: number,
+    quantity: number
+  ): Promise<void> {
+    await db
+      .insert(cartItems)
+      .values({ cartId, productId, quantity })
+      .onConflictDoUpdate({
+        target: [cartItems.cartId, cartItems.productId],
+        set: {
+          quantity: sql`${cartItems.quantity} + ${quantity}`,
+          updatedAt: new Date(),
+        },
+      });
+    await this.touchCart(cartId);
+  }
+
+  async setCartItemQuantity(
+    cartId: number,
+    itemId: number,
+    quantity: number
+  ): Promise<boolean> {
+    // cartId in the predicate is the ownership check — never trust itemId alone
+    const updated = await db
+      .update(cartItems)
+      .set({ quantity, updatedAt: new Date() })
+      .where(and(eq(cartItems.id, itemId), eq(cartItems.cartId, cartId)))
+      .returning({ id: cartItems.id });
+
+    if (updated.length > 0) await this.touchCart(cartId);
+    return updated.length > 0;
+  }
+
+  async removeCartItem(cartId: number, itemId: number): Promise<boolean> {
+    const removed = await db
+      .delete(cartItems)
+      .where(and(eq(cartItems.id, itemId), eq(cartItems.cartId, cartId)))
+      .returning({ id: cartItems.id });
+
+    if (removed.length > 0) await this.touchCart(cartId);
+    return removed.length > 0;
+  }
+
+  async clearCart(cartId: number): Promise<void> {
+    await db.delete(cartItems).where(eq(cartItems.cartId, cartId));
+    await this.touchCart(cartId);
+  }
+
+  async logProductClick(
+    productId: number,
+    sessionId: string | null,
+    source: string
+  ): Promise<void> {
+    await db.insert(productClicks).values({ productId, sessionId, source });
+  }
+
+  private async touchCart(cartId: number): Promise<void> {
+    await db
+      .update(carts)
+      .set({ updatedAt: new Date() })
+      .where(eq(carts.id, cartId));
   }
 }
 

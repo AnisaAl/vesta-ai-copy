@@ -146,6 +146,19 @@ Restart `npm run dev`. Try-on UI calls **your** API `POST /api/virtual-try-on`, 
 
 ---
 
+## Conversation / prompt eval (manual)
+
+Do **not** run these on every boot. Use them after prompt or intent changes. They never call Claude.
+
+```bash
+npm run eval:chat              # mock catalog, no tokens, no database, only mocked data
+npm run eval:retrieval         # local DeepFashion mix / gender-leak
+EVAL_CHAT_CORPUS=1 npm run eval:chat   # same chats against DeepFashion images
+```
+
+Details: [docs/EVAL_CHAT.md](docs/EVAL_CHAT.md).
+---
+
 ## What talks to what
 
 ```text
@@ -177,6 +190,11 @@ Base URL: `http://localhost:3000`
 | `GET` | `/api/chat/histories/1` | Sidebar | List histories (`1` = local MVP user) |
 | `PUT` | `/api/chat/history/:id` | Chat UI | Update messages |
 | `GET` | `/api/recommendations?query=&limit=` | Optional clients | DeepFashion outfits |
+| `GET` | `/api/catalog?audience=&category=&color=&style=&search=` | You | Affiliate products |
+| `GET` | `/api/cart` | Cart UI | Lines grouped by merchant + subtotal |
+| `POST` | `/api/cart/items` | Product cards | `{ productId, quantity? }` |
+| `PATCH`/`DELETE` | `/api/cart/items/:itemId` | Cart UI | Quantity change / remove |
+| `GET` | `/api/go/:productId?source=` | Buy links | Logs click, 302 to merchant |
 | `POST` | `/api/virtual-try-on` | Try-on dialog | Needs `PYTHON_SERVICE_URL` or returns setup error |
 
 Example chat call:
@@ -243,6 +261,10 @@ See [docs/MILESTONE_0B_NOTES.md](docs/MILESTONE_0B_NOTES.md).
 - [Milestone 0b Docker / storage](docs/MILESTONE_0B_NOTES.md)
 - [Milestone 1 prompt / intent retrieval](docs/MILESTONE_1_NOTES.md)
 - [Milestone 2 affiliate catalog](docs/MILESTONE_2_NOTES.md)
+- [Milestone 3 cart / checkout handoff](docs/MILESTONE_3_NOTES.md)
+- [Milestone 3.5 prompt / retrieval eval](docs/MILESTONE_3_5_NOTES.md)
+- [Milestone 3.6 search / browse](docs/MILESTONE_3_6_NOTES.md)
+- [Conversation simulations (eval:chat)](docs/EVAL_CHAT.md)
 
 ## License
 

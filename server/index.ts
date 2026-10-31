@@ -3,11 +3,14 @@ import path from "path";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { objectStorage } from "./services/objectStorage";
+import { anonymousSession } from "./middleware/session";
 
 const app = express();
 // Increase the payload size limit to 50MB for handling images
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
+// Anonymous session id backs the pre-auth cart
+app.use(anonymousSession);
 
 // Serve DeepFashion-MultiModal images as static files
 const deepFashionImagesPath = path.join(

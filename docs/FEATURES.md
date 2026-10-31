@@ -24,7 +24,12 @@ What exists today, phrased as user capabilities. A UX test guide will follow sep
 | 5 | Ask for a **style/occasion** direction (office, casual, minimal) and get matching looks | Live | `fashionIntent.ts` (`style`) |
 | 6 | Upload a clothing photo and get advice about that item (defaults to *combine* unless "similar" is asked) | Live | `useChat.ts` → `POST /api/chat` |
 | 7 | Say who the outfit is for and **not** see the opposite gender's clothes — "outfits for women" excludes `MEN-` looks and masculine-coded captions (gentleman, guy, his) | Live | `detectAudience` / `itemMatchesAudience` |
-| 8 | Get outfit images, color swatches, and accessories rendered together in a single reply | Live | `ChatBubble.tsx` |
+| 7a | Rely on a **locked retrieval plan** (heuristic + policy) so chat images follow combine/similar/color/style instead of model whim | Live | `buildRetrievalPlan` / M3.5 |
+| 7b | Get fewer or empty cards instead of random filler when color/style filters miss | Live | `searchDeepFashionDetailed` |
+| 7c | **Browse** a named garment (“show me party dresses”) and see that category only; dresses imply women | Live | `fashionIntent.ts` (`browse`) |
+| 7d | Get a follow-up (men vs women, casual vs party) for ambiguous items like blazers before mixed cards | Live | `needsFollowUp` |
+| 7e | Replay scripted chats locally with a mock catalog (no Claude tokens) via `npm run eval:chat` | Backend only | `server/scripts/evalChat.ts` |
+| 8 | Get outfit images and accessories in a reply; color advice is a short sentence (not swatch tiles) | Live | `ChatBubble.tsx` |
 | 9 | Keep chatting when the Anthropic API is down or out of quota (rule-based local fallback) | Live | `fashionData.ts` |
 | 10 | Reopen past conversations from the history sidebar and start a new chat | Live | `HistorySidebar.tsx` |
 
@@ -42,10 +47,27 @@ No owned inventory. Checkout stays on the merchant; the in-app cart is Milestone
 | 12 | Load a product feed offline with `npm run catalog:ingest`, re-runnable without duplicates | Live | `server/scripts/ingestCatalog.ts` |
 | 13 | Point ingest at a custom feed via `AFFILIATE_FEED_PATH` | Live | same |
 | 14 | Browse/filter the catalog by audience, category, color, style, free-text search, with paging | Backend only | `GET /api/catalog` |
-| 15 | Receive shoppable affiliate products in chat instead of research imagery, when the catalog has matches | Live (data) | `resolveOutfitSuggestions` |
+| 15 | Receive shoppable affiliate products in chat instead of research imagery, when the catalog has matches | Live | `resolveOutfitSuggestions` |
 | 16 | Fall back to DeepFashion imagery automatically when the catalog is empty or filters miss | Live | `server/services/catalog.ts` |
 
-**Known gap:** affiliate fields reach the client (`affiliateUrl`, `priceCents`, `merchant`, `source` on `FashionOutfit`) but **nothing renders them yet**. Outfit cards still show only image, name, description, and "Try it on" — no price, merchant, or buy link. `GET /api/catalog` also has no UI consumer. Both are Milestone 3 work.
+`GET /api/catalog` still has no UI consumer — products reach users only through chat.
+
+---
+
+## Shopping & checkout
+
+| # | User can… | Status | Where |
+|---|-----------|--------|-------|
+| 17 | See the price and merchant on shoppable product cards in chat | Live | `OutfitGrid.tsx` |
+| 18 | Add a product to a bag from chat, with the header badge updating | Live | `useCart.ts` |
+| 19 | Keep the bag across refreshes and restarts without logging in | Live | `carts` + `vesta_sid` cookie |
+| 20 | Review the bag grouped by merchant, change quantities, and remove items | Live | `/cart` |
+| 21 | See a subtotal, and "Price at merchant" when a price is unavailable | Live | `Cart.tsx` |
+| 22 | Be told when an item is no longer listed by the merchant | Live | `isActive` join |
+| 23 | Click through to the merchant to buy, with the click recorded first-party | Live | `GET /api/go/:productId` |
+| 24 | See the affiliate commission disclosure wherever outbound links appear | Live | `AffiliateDisclosure.tsx` |
+
+Vesta never takes payment. Affiliate deep links are per product, so each line opens its own merchant page rather than a single merchant-level checkout.
 
 ---
 
@@ -53,9 +75,9 @@ No owned inventory. Checkout stays on the merchant; the in-app cart is Milestone
 
 | # | User can… | Status | Where |
 |---|-----------|--------|-------|
-| 17 | See real garment photos from the local DeepFashion-MultiModal corpus rather than stock filler | Live | `server/services/deepFashion.ts` |
-| 18 | Get looks filtered by garment role, color words, and style tags parsed from captions | Live | `searchDeepFashion` |
-| 19 | Query DeepFashion outfits directly over HTTP | Backend only | `GET /api/recommendations` |
+| 25 | See real garment photos from the local DeepFashion-MultiModal corpus rather than stock filler | Live | `server/services/deepFashion.ts` |
+| 26 | Get looks filtered by garment role, color words, and style tags parsed from captions | Live | `searchDeepFashion` |
+| 27 | Query DeepFashion outfits directly over HTTP | Backend only | `GET /api/recommendations` |
 
 ---
 
@@ -63,7 +85,7 @@ No owned inventory. Checkout stays on the merchant; the in-app cart is Milestone
 
 | # | User can… | Status | Where |
 |---|-----------|--------|-------|
-| 20 | Click "Try it on" on any outfit card, upload a photo, and see a composite result | Demo | `VirtualTryOn.tsx` |
+| 28 | Click "Try it on" on any outfit card, upload a photo, and see a composite result | Demo | `VirtualTryOn.tsx` |
 
 Labeled as demo in the dialog title and an amber banner; requires `PYTHON_SERVICE_URL` (Compose profile `vto`) or it returns a setup message.
 
@@ -73,9 +95,9 @@ Labeled as demo in the dialog title and an amber banner; requires `PYTHON_SERVIC
 
 | # | User can… | Status | Where |
 |---|-----------|--------|-------|
-| 21 | Upload wardrobe items and see them as cards | Demo | `Wardrobe.tsx` — React state only, lost on refresh |
-| 22 | View a profile preview (avatar, style preferences, favorite colors) | Placeholder | `Profile.tsx` — static, no editing |
-| 23 | Browse trending styles and color trends | Placeholder | `Trends.tsx` — hardcoded, images currently broken |
+| 29 | Upload wardrobe items and see them as cards | Demo | `Wardrobe.tsx` — React state only, lost on refresh |
+| 30 | View a profile preview (avatar, style preferences, favorite colors) | Placeholder | `Profile.tsx` — static, no editing |
+| 31 | Browse trending styles and color trends | Placeholder | `Trends.tsx` — hardcoded, images currently broken |
 
 Persistence for these lands in Milestones 5 and 6.
 
@@ -85,12 +107,13 @@ Persistence for these lands in Milestones 5 and 6.
 
 | # | Operator can… | Status | Where |
 |---|-----------|--------|-------|
-| 24 | Run Postgres, the API, and the try-on sidecar via Docker Compose profiles | Live | `docker-compose.yml` |
-| 25 | Move Compose Postgres off a busy host port with `POSTGRES_HOST_PORT` | Live | same |
-| 26 | Apply schema with `npm run db:push` (Drizzle) | Live | `shared/schema.ts` |
-| 27 | Check liveness and config flags | Live | `GET /api/health` |
-| 28 | Keep uploads local now and swap to S3 later behind one interface | Live | `objectStorage.ts` |
-| 29 | Use chat without auth via a seeded local MVP user | Live | `ensureLocalUser` |
+| 32 | Run Postgres, the API, and the try-on sidecar via Docker Compose profiles | Live | `docker-compose.yml` |
+| 33 | Move Compose Postgres off a busy host port with `POSTGRES_HOST_PORT` | Live | same |
+| 34 | Apply schema with `npm run db:push` (Drizzle) | Live | `shared/schema.ts` |
+| 35 | Check liveness and config flags | Live | `GET /api/health` |
+| 36 | Keep uploads local now and swap to S3 later behind one interface | Live | `objectStorage.ts` |
+| 37 | Use chat without auth via a seeded local MVP user | Live | `ensureLocalUser` |
+| 38 | Rely on an anonymous session cookie so carts survive without auth | Live | `server/middleware/session.ts` |
 
 ---
 
@@ -130,4 +153,4 @@ The set is sized to exercise every retrieval path without padding:
 
 ## Not built yet
 
-In-app cart and merchant checkout handoff (M3) · production try-on quality (M4) · persisted wardrobe (M5) · live trends from catalog aggregates (M6) · authentication and per-user profiles · affiliate fields rendered on outfit cards.
+Production try-on quality (M4) · persisted wardrobe (M5) · live trends from catalog aggregates (M6) · authentication, per-user profiles, and cart claiming on login · a browsable catalog page (products currently reach users only through chat) · abandoned-cart cleanup job.
